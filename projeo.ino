@@ -15,6 +15,23 @@ const int rs = 22, en = 23, d4 = 24, d5 = 25, d6 = 26, d7 = 27;
 
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
+ //buzzer
+ #define pinBuzzer 12
+
+//RFID
+#include <SPI.h>
+#include <MFRC522.h>
+
+#define SS_PIN 35
+#define RST_PIN 11
+
+MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
+
+MFRC522::MIFARE_Key key; 
+
+// Init array that will store new NUID 
+byte nuidPICC[4];
+
 
 // See: https://www.arduino.cc/en/Reference/PROGMEM
 #define PGMprintln(x) println(F(x))
@@ -70,10 +87,29 @@ void setup() {
   
   //inciando serial
   Serial.begin(19200);
+  //rfid
 
+  SPI.begin(); // Init SPI bus
+  rfid.PCD_Init(); // Init MFRC522 
+
+  for (byte i = 0; i < 6; i++) {
+    key.keyByte[i] = 0xFF;
+  }
+
+  Serial.println(F("This code scan the MIFARE Classsic NUID."));
+
+  Serial.print("\n");
   // Initializing Ethernet
   Serial.PGMprintln("Initializing Ethernet, waiting for DHCP...");
-  Ethernet.begin(mac);
+  int i =0;
+  while(i == 0){
+  lcd.clear();
+  lcd.home();
+  lcd.print("Conectando");
+  lcd.setCursor(0,1);
+  lcd.print("a internet");
+  
+  if(Ethernet.begin(mac)){
   Serial.PGMprint("IP: ");
   Serial.println(Ethernet.localIP());
   Serial.PGMprint("Subnet mask: ");
@@ -82,18 +118,30 @@ void setup() {
   Serial.println(Ethernet.gatewayIP());
   Serial.PGMprint("DNS: ");
   Serial.println(Ethernet.dnsServerIP());
-
+  i=1;
+  }
+  else{
+    lcd.clear();
+    lcd.home();
+    lcd.print("Erro ao conectar");
+    lcd.setCursor(0,1);
+    lcd.print("a internet");
+    delay(2000);
+    i = 0;
+  }
+ }
+ 
+i =0;
+while(i == 0){
   // Initializing DNS
   Serial.PGMprintln("Initializing DNS client...");
   DNSclient.begin(Ethernet.dnsServerIP());
-  int i =0;
-  while(i ==0){
+
     if (DNSclient.getHostByName(dsthost, dstip)) {
       Serial.PGMprint("Resolved remote host to: ");
       Serial.println(dstip);
       Serial.println(dsthost);
-      i =1;
-      delay(5000);
+      i = 1;
       digitalWrite(rele,LOW);
       lcd.clear();
       lcd.home();
@@ -111,9 +159,7 @@ void setup() {
       i = 0;
     }
   }
-  delay(2000);
 }
-
 HttpClient client1 = HttpClient(client, dsthost, port);
 
 //função que verifica o estado da catraca
@@ -161,6 +207,8 @@ void loop() {
     lcd.setCursor(0,1);
     flagLCD = 1;
   }
+
+
   
   char tecla_presionada = teclado.getKey();    //Almaceno en una variable la tecla presionada
   if (tecla_presionada != NULL){
@@ -183,8 +231,72 @@ void loop() {
    }
  }
 
+  // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
+ if ( ! rfid.PICC_IsNewCardPresent())
+  return;
+
+  // Verify if the NUID has been readed
+if ( ! rfid.PICC_ReadCardSerial())
+  return;
+
+Serial.print(F("PICC type: "));
+MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
+Serial.println(rfid.PICC_GetTypeName(piccType));
+
+  // Check is the PICC of Classic MIFARE type
+if (piccType != MFRC522::PICC_TYPE_MIFARE_MINI &&  
+  piccType != MFRC522::PICC_TYPE_MIFARE_1K &&
+  piccType != MFRC522::PICC_TYPE_MIFARE_4K) {
+  Serial.println(F("Your tag is not of type MIFARE Classic."));
+return;
+}
+
+
+Serial.println(F("A new card has been detected."));
+
+    // Store NUID into nuidPICC array
+for (byte flagLop = 0; flagLop < 4; flagLop++) {
+  nuidPICC[flagLop] = rfid.uid.uidByte[flagLop];
+
+  if(nuidPICC[flagLop]<100 && i <9){
+    cpf = cpf + "0"+nuidPICC[flagLop];
+    i = i +3;
+  }
+  else{
+    if(i<9){
+
+      cpf = cpf +nuidPICC[flagLop];
+      i = i +3;
+    }
+  }
+  if((nuidPICC[flagLop]<10) &&( i >=9) && (i < 11) &&(flagLop == 3)){
+    i=i+2;
+    cpf = cpf +"0"+ nuidPICC[flagLop];
+  }
+  else
+  {
+    if(( i >=9) && (i < 11)&&(flagLop == 3)){
+      i=i+2;
+      cpf = cpf + nuidPICC[flagLop];
+    }
+  }
+  Serial.println("CPF: "+cpf);
+  Serial.println(i);
+  Serial.println(flagLop);
+}
+Serial.println("CPF: "+cpf);
+
+
+  // Halt PICC
+rfid.PICC_HaltA();
+
+  // Stop encryption on PCD
+rfid.PCD_StopCrypto1();
+
+
+
  //verifica se já recebeu os 11 numeros do cpf
- if(i == 1 && stp == 0 ){
+if(i == 11 && stp == 0 ){
   /*verifica se já recebeu o resultado da verificação no banco de dados e se já pode acessar
   essa area -> stop = 1 -> não; stop = 0 ->Sim */
   if(response == "" && stp == 0){
