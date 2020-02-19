@@ -1,15 +1,19 @@
 //Includes e variaveis para conexão com internet
-#include <UIPEthernet.h>
-#include <Dns.h>
-#include <ArduinoHttpClient.h>
 
-//Includes do teclado
-#include <Keypad.h>
+#include <UIPEthernet.h>
+
+EthernetClient client;
+signed long next;
+
+
+uint8_t mac[6] = {0x00,0x01,0x02,0x03,0x04,0x05};
+
 
 //include lcd
 #include <LiquidCrystal.h>
 
-// initialize the library by associating any needed LCD interface pin
+// initialize the library b#include <UIPEthernet.h>
+// associating any needed LCD interface pin
 // with the arduino pin number it is connected to
 const int rs = 22, en = 23, d4 = 24, d5 = 25, d6 = 26, d7 = 27;
 
@@ -37,16 +41,11 @@ byte nuidPICC[4];
 #define PGMprintln(x) println(F(x))
 #define PGMprint(x) print(F(x))
 
-// MAC address configuration
-const uint8_t mac[] = { 0x78 , 0x2B, 0xCB, 0xBF, 0xA8, 0x34 };
-// Destination host and port
-const char dsthost[] = "192.168.1.141";
-const uint16_t dstport = 80;
-int port = 80;
-// Our three main objects
-EthernetClient client;
-DNSClient DNSclient;
-IPAddress dstip;
+
+
+//Includes do teclado
+#include <Keypad.h>
+
 //constantes de inicialização do teclado
 const byte filas = 4;     //Numero de filas del teclado
 const byte columnas = 4;  //Numero de columnas del teclado
@@ -71,6 +70,8 @@ Keypad teclado = Keypad( makeKeymap(matriz), pinesFilas, pinesColumnas, filas, c
 int rele = 48;
 int pinLaser = 28;
 
+void liberaCatraca(uint8_t response);
+
 void setup() {
 
   //iniciando mensagem do lcd
@@ -80,15 +81,24 @@ void setup() {
   lcd.print("Iniciando");
   lcd.setCursor(0,1);
   lcd.print("Aguarde...");
-
+  //sinal sonoro
+  
+  pinMode(pinBuzzer,OUTPUT); 
+  tone(pinBuzzer,261,200);
+  noTone(pinBuzzer);
+  
+  //inicia o lase de verificação
   pinMode(pinLaser, OUTPUT);
   digitalWrite(pinLaser,HIGH);
+  
+  //inicia o rele, inicialmente destrava a catraca, só a trava depois de conectar a internet
   pinMode(rele, OUTPUT); 
+  digitalWrite(rele,HIGH);
   
   //inciando serial
   Serial.begin(19200);
+  
   //rfid
-
   SPI.begin(); // Init SPI bus
   rfid.PCD_Init(); // Init MFRC522 
 
@@ -96,13 +106,15 @@ void setup() {
     key.keyByte[i] = 0xFF;
   }
 
-  Serial.println(F("This code scan the MIFARE Classsic NUID."));
+  Serial.println(F("This scan the MIFARE Classsic NUID."));
 
-  Serial.print("\n");
   // Initializing Ethernet
   Serial.PGMprintln("Initializing Ethernet, waiting for DHCP...");
+  
   int i =0;
+  
   while(i == 0){
+  
   lcd.clear();
   lcd.home();
   lcd.print("Conectando");
@@ -110,17 +122,35 @@ void setup() {
   lcd.print("a internet");
   
   if(Ethernet.begin(mac)){
-  Serial.PGMprint("IP: ");
+  Serial.print("localIP: ");
   Serial.println(Ethernet.localIP());
-  Serial.PGMprint("Subnet mask: ");
+  Serial.print("subnetMask: ");
   Serial.println(Ethernet.subnetMask());
-  Serial.PGMprint("Gateway: ");
+  Serial.print("gatewayIP: ");
   Serial.println(Ethernet.gatewayIP());
-  Serial.PGMprint("DNS: ");
+  Serial.print("dnsServerIP: ");
   Serial.println(Ethernet.dnsServerIP());
-  i=1;
-  }
+  
+  if (client.connect(IPAddress(192,168,1,144),8080))
+    {
+     Serial.println("Client connected"); 
+     digitalWrite(rele,LOW);
+     next = 0;
+      i=1;
+  
+ }
   else{
+    
+  Serial.print("localIP: ");
+  Serial.println(Ethernet.localIP());
+  Serial.print("subnetMask: ");
+  Serial.println(Ethernet.subnetMask());
+  Serial.print("gatewayIP: ");
+  Serial.println(Ethernet.gatewayIP());
+  Serial.print("dnsServerIP: ");
+  Serial.println(Ethernet.dnsServerIP());
+  next = 0;
+
     lcd.clear();
     lcd.home();
     lcd.print("Erro ao conectar");
@@ -128,39 +158,14 @@ void setup() {
     lcd.print("a internet");
     delay(2000);
     i = 0;
+  
   }
  }
  
 i =0;
-while(i == 0){
-  // Initializing DNS
-  Serial.PGMprintln("Initializing DNS client...");
-  DNSclient.begin(Ethernet.dnsServerIP());
-
-    if (DNSclient.getHostByName(dsthost, dstip)) {
-      Serial.PGMprint("Resolved remote host to: ");
-      Serial.println(dstip);
-      Serial.println(dsthost);
-      i = 1;
-      digitalWrite(rele,LOW);
-      lcd.clear();
-      lcd.home();
-      lcd.print("Sistema inciado");
-      lcd.setCursor(0,1);
-      lcd.print("Insira o CPF");
-    } 
-    else {
-      Serial.PGMprintln("Error: could not resolve remote host.");
-      lcd.clear();
-      lcd.home();
-      lcd.print("Erro ao conectar");
-      lcd.setCursor(0,1);
-      lcd.print("a internet");
-      i = 0;
-    }
-  }
 }
-HttpClient client1 = HttpClient(client, dsthost, port);
+}
+
 
 //função que verifica o estado da catraca
 bool travaCatraca(){
@@ -194,6 +199,11 @@ String cpf= "";
 int i = 0;
 int stp = 0;
 String response = "";
+/* ####Respostas possives do RESPONSE####
+ *  200 tudo certo, aluno existe e está autorizado;
+ *  401 Aluno existe mas não está autorizado
+ *  400 Aluno não existe
+ */
 int flagLCD=0;
 int statusCode = 0;
 void loop() {
@@ -227,10 +237,13 @@ void loop() {
      //informações para serial
      Serial.print("CPF:");
      Serial.println(cpf);
+     Serial.println(i);
      i=i+1;
    }
  }
-
+  if(i == 11){
+    getRequest(cpf);
+  }
   // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
  if ( ! rfid.PICC_IsNewCardPresent())
   return;
@@ -255,6 +268,8 @@ return;
 Serial.println(F("A new card has been detected."));
 
     // Store NUID into nuidPICC array
+cpf = "";
+i=0;
 for (byte flagLop = 0; flagLop < 4; flagLop++) {
   nuidPICC[flagLop] = rfid.uid.uidByte[flagLop];
 
@@ -275,6 +290,7 @@ for (byte flagLop = 0; flagLop < 4; flagLop++) {
   }
   else
   {
+
     if(( i >=9) && (i < 11)&&(flagLop == 3)){
       i=i+2;
       cpf = cpf + nuidPICC[flagLop];
@@ -292,36 +308,71 @@ rfid.PICC_HaltA();
 
   // Stop encryption on PCD
 rfid.PCD_StopCrypto1();
+if(i == 11){
+  getRequest(cpf);
+}
+}
 
-
-
+void getRequest(String &cpf){
+  Serial.println("Baianor kk");
  //verifica se já recebeu os 11 numeros do cpf
-if(i == 11 && stp == 0 ){
-  /*verifica se já recebeu o resultado da verificação no banco de dados e se já pode acessar
-  essa area -> stop = 1 -> não; stop = 0 ->Sim */
-  if(response == "" && stp == 0){
-    Serial.println("making GET request");
-    lcd.clear();
-    lcd.home();
-    lcd.print("Verificando...");
-    client1.get("/arduino/api/index.php?acao=controleCatraca&cpf="+cpf);
-    statusCode = client1.responseStatusCode();
-    response = String(client1.responseBody());
-    Serial.print("Status code: ");
-    Serial.println(statusCode);
-    Serial.print("Response:"+response);
-    Serial.println(response);
-  }
+if(cpf.length() == 11){
+  uint8_t a[11];
+  cpf.toCharArray(a,11);
+  Serial.println("Entro");
+   if (((signed long)(millis() - next)) > 0)
+    {
+      next = millis() + 5000;
+      Serial.println("Client connect");
+      // replace hostname with name of machine running tcpserver.pl
+//      if (client.connect("server.local",5000))
+          
+          client.write(a,11);
+          
+          if((client.available()) > 0)
+            {
+              uint8_t msg;
+              msg = client.read();
+              Serial.println(msg);
+              
+              liberaCatraca(msg);
+
+                  i = 0;
+      cpf = "";
+      response = "";
+      stp = 0;
+      flagLCD=0;
+            }
+            else{
+              Serial.println("Client connect failed");
+            }
+        }
+      else{
+      i = 0;
+      cpf = "";
+      response = "";
+      stp = 0;
+      flagLCD=0;
+        Serial.println("Client connect failed");
+    }
+    }
     //Verifica se o conseguiu acessar a internet
-  if(statusCode == 200){
     /*verifica a resposta da requisição http, 200 = aluno existe,
     tem créditos e foram descontados créditos da sua carteira*/
-    if(response.equals("200")){
+}
+
+void liberaCatraca(uint8_t response){
+    Serial.println(response);
+    Serial.print("a");
+      if(response =='2'){
+      
+      
       //envia mensagem que foi autorizado
       lcd.clear();
       lcd.home();
       lcd.print("Autorizado");
-
+      //envia sinal sonoro
+      tone(pinBuzzer,929,200);
       //flag para não fazer uma nova requisição
       stp =1;
 
@@ -348,6 +399,34 @@ if(i == 11 && stp == 0 ){
         flagLCD=0;
       }
     }
+    else if(response == 401){
+       //avisa que aluno não está autorizado
+      lcd.clear();
+      lcd.home();
+      lcd.print("Nao autorizado");
+      lcd.setCursor(0,1);
+      lcd.print("Informe a CGAE");
+      delay(4000);
+    //reinicia todas as flags e variaveis
+      i = 0;
+      cpf = "";
+      response = "";
+      stp = 0;
+      flagLCD=0;
+    }
+    else if(response == 400){
+       //avisa que aluno não existe
+      lcd.clear();
+      lcd.home();
+      lcd.print("Dados invalidos");
+      delay(2000);
+    //reinicia todas as flags e variaveis
+      i = 0;
+      cpf = "";
+      response = "";
+      stp = 0;
+      flagLCD=0;
+    }
     else{
     //avisa que algo deu errado e informa o codigo do erro
       lcd.clear();
@@ -364,19 +443,3 @@ if(i == 11 && stp == 0 ){
       flagLCD=0;
     }
   }
-  else{
-   lcd.clear();
-   lcd.home();
-   lcd.print("Erro:");
-   lcd.setCursor(0,1);
-   lcd.print("Desconectado.");
-   setup();
-   HttpClient client1 = HttpClient(client, dsthost, port);
-   i = 0;
-   cpf = "";
-   response = "";
-   stp = 0;
-   flagLCD=0;
- }
-}
-}
