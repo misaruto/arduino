@@ -26,9 +26,6 @@ const int port = 8080;
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
 //Define o tipo de etiqueta que será lida, no caso MIFARE Classic
 MFRC522::MIFARE_Key key; 
-//Inicia o array que armazena os valores lidos do RFID 
-byte nuidPICC[4];
-
 
 //include lcd
 #include <LiquidCrystal.h>
@@ -74,21 +71,14 @@ int contDigitos = 0;
 
 //Variveis de dados e respostas
 String cpf= "";
-String response = "";
 
-/* ####Respostas possives do RESPONSE####
-    #Respostas vem em ASCII#
- *  2 - 50 tudo certo, aluno existe e está autorizado;
- *  4 - 53 Aluno existe mas não está autorizado
- *  5 - 54 Aluno não existe
- */
 int flagLCD = 0;
 int statusCode = 0;
 //Função que converte o resultdado da leitura do cartão rfid para String
 int convertArrayCpf(MFRC522::Uid &nuidPICC);
 
 //Função que verifica os dados do aluno
-void liberaCatraca(uint8_t response);
+void liberaCatraca(uint8_t &response);
 
 //Declara a função responsavel por saber quando a catraca foi girada
 bool travaCatraca();
@@ -97,7 +87,7 @@ bool travaCatraca();
 void printConexaoStatus();
 
 //declara função que faz a comunicação via tcp com o servidor
-void comunicaComServidor(String cpf);
+void comunicaComServidor();
 
 void setup() {
 
@@ -225,8 +215,8 @@ void loop() {
    }
  }
  if(contDigitos == 11){
-    comunicaComServidor(cpf);
-  }
+  comunicaComServidor();
+}
   // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
 if ( ! rfid.PICC_IsNewCardPresent()){
   return;
@@ -252,10 +242,10 @@ Serial.println(F("A new card has been detected."));
 contDigitos = convertArrayCpf(rfid.uid); 
 
 if(contDigitos == 11){
-  comunicaComServidor(cpf);
+  comunicaComServidor();
 
 }
-
+}
 //função que imprime o status da conexão com a internet
 void printConexaoStatus(){
   Serial.print("localIP: ");
@@ -268,16 +258,20 @@ void printConexaoStatus(){
   Serial.println(Ethernet.dnsServerIP());
 }
 
-int convertArrayCpf(MFRC522::Uid &nuidPICC){
+int convertArrayCpf(MFRC522::Uid &nuid){
+  //Inicia o variavel temporaria que armazena os valores lidos do RFID 
+  byte nuidPICC;
   // Converte a NUID de array para String
   cpf = "";
   contDigitos=0;
   // laço que vai de 0 a 3, pois são coletado em 3 blocos de 3 digitos e 1 de 2 digitos.
   for (byte flagLop = 0; flagLop < 4; flagLop++) {
+  //transforma em array local o que vem do 
+    nuidPICC = nuid.uidByte[flagLop];
   //verifica se o digito é menor que 100 e está entre o 1° e o 9° digito
-    if(nuidPICC[flagLop] < 100 && contDigitos < 9){
+    if(nuidPICC < 100 && contDigitos < 9){
     //se for menor que 100 é necessário adcionar o 0 antes, para se ter 11 digitos
-      cpf = cpf + "0"+nuidPICC[flagLop];
+      cpf = cpf + "0"+nuidPICC;
     //incrementa mais 3 no contador de digitos
       contDigitos = contDigitos +3;
     }
@@ -286,15 +280,15 @@ int convertArrayCpf(MFRC522::Uid &nuidPICC){
     //verifica se ainda está entre o 1° e o 9° digito
       if(contDigitos < 9){
       //se sim concatena na string
-        cpf = cpf +nuidPICC[flagLop];
+        cpf = cpf +nuidPICC;
       //incrementa mais 3 nos digitos
         contDigitos = contDigitos +3;
       }
     }
   //Verifica se os ultimos digitos são menores que 10, se está entre o 9° e 11° digito e se está no ultimo bloco 
-    if((nuidPICC[flagLop]<10) &&( contDigitos >=9) && (contDigitos < 11) &&(flagLop == 3)){
+    if((nuidPICC < 10) &&( contDigitos >=9) && (contDigitos < 11) &&(flagLop == 3)){
     //Concatena o valor com o 0 antes
-      cpf = cpf +"0"+ nuidPICC[flagLop];
+      cpf = cpf +"0"+ nuidPICC;
     //incrementa o numero de digitos
       contDigitos = contDigitos+2;
     }
@@ -303,7 +297,7 @@ int convertArrayCpf(MFRC522::Uid &nuidPICC){
     //se for os ultimos digitos, porem são maiores que 10
       if(( contDigitos >=9) && (contDigitos < 11)&&(flagLop == 3)){
         //concatena a String
-        cpf = cpf + nuidPICC[flagLop];
+        cpf = cpf + nuidPICC;
         //incrementa os digitos
         contDigitos=contDigitos+2;
       }
@@ -352,7 +346,7 @@ bool travaCatraca(){
 }
 
 //faz a comunicação com o servidor
-void comunicaComServidor(String &cpf){
+void comunicaComServidor(){
   Serial.println("Baianor kk");
  //verifica se já recebeu os 11 numeros do cpf
   if(cpf.length() == 11){
@@ -379,9 +373,7 @@ void comunicaComServidor(String &cpf){
         liberaCatraca(msg);
 
         contDigitos = 0;
-        cpf = "";
-        response = "";
-        
+        cpf = "";        
         flagLCD=0;
       }
       else{
@@ -390,10 +382,9 @@ void comunicaComServidor(String &cpf){
     }
     else{
       contDigitos = 0;
-      cpf = "";
-      response = "";
-      
+      cpf = ""; 
       flagLCD=0;
+
       Serial.println("Client connect failed");
     }
   }
@@ -402,7 +393,15 @@ void comunicaComServidor(String &cpf){
     tem créditos e foram descontados créditos da sua carteira*/
 }
 //função que pega a resposta do servidor e decide se libera ou nn
-void liberaCatraca(uint8_t response){
+void liberaCatraca(uint8_t &response){
+
+  /* ####Respostas possives do RESPONSE####
+            #Respostas vem em ASCII#
+ *  2 - 50 tudo certo, aluno existe e está autorizado;
+ *  4 - 53 Aluno existe mas não está autorizado
+ *  5 - 54 Aluno não existe
+ */
+
   Serial.println(response);
   //Como a resposta vem em ASCII, converte o codigo decimal que indica tudo ok para ASCII 
   if(response =='2'){
@@ -413,9 +412,7 @@ void liberaCatraca(uint8_t response){
     //envia sinal sonoro
     tone(pinBuzzer,929,200);
     
-    //flag para não fazer uma nova requisição
-    
-      //libera a catraca
+    //libera a catraca
     digitalWrite(rele,HIGH);
 
       //envia mensagem de que liberou a catraca
@@ -431,15 +428,15 @@ void liberaCatraca(uint8_t response){
       //envia mensagem de que travou a catraca
       lcd.setCursor(0,1);
       lcd.print("Catraca travada");
-      i = 0;
+      contDigitos = 0;
       cpf = "";
-      response = "";
-      
       flagLCD=0;
+
     }
   }
-  else if(response == 401){
-       //avisa que aluno não está autorizado
+  else if(response == '4'){
+
+    //avisa que aluno não está autorizado
     lcd.clear();
     lcd.home();
     lcd.print("Nao autorizado");
@@ -447,23 +444,22 @@ void liberaCatraca(uint8_t response){
     lcd.print("Informe a CGAE");
     delay(4000);
     //reinicia todas as flags e variaveis
-    i = 0;
+    contDigitos = 0;
     cpf = "";
-    response = "";
-    
     flagLCD=0;
+
   }
-  else if(response == 400){
-       //avisa que aluno não existe
+  else if(response == '5'){
+
+    //avisa que aluno não existe
+
     lcd.clear();
     lcd.home();
     lcd.print("Dados invalidos");
     delay(2000);
     //reinicia todas as flags e variaveis
-    i = 0;
+    contDigitos = 0;
     cpf = "";
-    response = "";
-    
     flagLCD=0;
   }
   else{
@@ -475,10 +471,8 @@ void liberaCatraca(uint8_t response){
     lcd.print(response);
 
     //reinicia todas as flags e variaveis
-    i = 0;
+    contDigitos = 0;
     cpf = "";
-    response = "";
-    
     flagLCD=0;
   }
 }
