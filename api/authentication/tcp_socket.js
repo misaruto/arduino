@@ -1,4 +1,6 @@
 const net   = require("net");
+const configs = require("./configs");
+
 
 module.exports = {
     server:null,
@@ -15,12 +17,12 @@ module.exports = {
     listen: configurations => 
     {
         this.server.listen({
-            host: 'localhost',
-            port: 8080,
-            exclusive: true
+            host: configs.host,
+            port: configs.port,
+            exclusive: configs.exclusive
           }, () => 
           {
-              console.log("Listeningo on port 8080...");
+              console.log(`Host:${configs.host}\nPort:${configs.port}\n`);
           })
     }
 }
