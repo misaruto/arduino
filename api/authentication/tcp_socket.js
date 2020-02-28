@@ -7,14 +7,14 @@ module.exports = {
     onerror:null,
     create: handler =>
     {
-        if(!handler && this.onerror) this.onerror("Missing handler");
+        if(!handler && this.onerror) this.onerror({fatal:true, error:"Missing handler on create", code:3});
         if(!handler && !this.onerror) throw new Error("Missing handler");
 
         this.server = net.createServer(handler);
 
         if(this.onerror) this.server.on("error", this.onerror);
     },
-    listen: configurations => 
+    listen: () => 
     {
         this.server.listen({
             host: configs.host,

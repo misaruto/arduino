@@ -1,14 +1,15 @@
 /**
- * @todo tratar os erros
- * @todo testar o mysql
+ * @todo testar
+ * @todo tratar a resposta do mysql
+ * @todo tentar um mysql injection
+ * @todo tentar um cross site scripting
  */
 
-var mysql = require('mysql');
-const configs = require("./configs");
-const fs = require("fs");
+var mysql = require('mysql');           // Módulo para conectar com o banco de dados
+const configs = require("./configs");   // Configurações gerais
+const fs = require("fs");               // File system, para persistir logs
 
-// Conecta ao mysql
-
+// Cria a conexão com o mysql
 var con = mysql.createConnection({
   host: configs.database.host,
   user: configs.database.user,
@@ -17,19 +18,13 @@ var con = mysql.createConnection({
 });
 
 
-// Interface externa que invocará estes métodos
-module.exports = 
-{
-    handleForIncommingRequests,
-}
-
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
 function handleForIncommingRequests(data, callback)
 {
-    if (!callback) throw new Error("Fatal: Missing callback function at handleForIncommingRequest!");
+    if (!callback) error({fatal:true, error:"Missing callback on handleForIncommingRequests", code:3 })
     if (!data)
     {
-        error ({err:"missing Args", code:1}, data); callback({err:"Missing Args", code:1});
+        error ({err:"missing Args", code:1}, data);
         return;
     }
 
@@ -41,25 +36,24 @@ function handleForIncommingRequests(data, callback)
                     {
                         if(ans == -2){
                             error({err:"Missing args", code:1,data:`${cpf} ${token}`});
-                            callback({err:"Forbidden characteres founded!", code:0});
                             return -1;
                         }
                         error({err:"Forbidden characteres founded!", code:0,data:`${cpf} ${token}`});
-                        callback({err:"Forbidden characteres founded!", code:0});
                         return -1;
                     }
-                    if (await verifyRequest(token) < 0)
-                    {
-                        error({err:"Forbidden characteres founded!", code:0, data:`${cpf} ${token}`});
-                        callback({err:"Forbidden characteres founded!", code:0});
+                if (await verifyRequest(token) < 0) { 
+                    if(ans == -2){
+                        error({err:"Missing args", code:1,data:`${cpf} ${token}`});
                         return -1;
                     }
-                    callDB(cpf, token);
+                    error({err:"Forbidden characteres founded!", code:0, data:`${cpf} ${token}`});
+                    return -1; }
+                    const res = callDB(cpf, token);
                 })
                 .catch((err) =>
                 {
                     error(err);
-                    callback(err);
+                    return -1;
                 });
 }
 // Faz o parse da requisição, recuperando todos os dados devidamente
@@ -85,9 +79,10 @@ function verifyRequest(content)
 }
 function error(err, data)
 {
-    const err_txt = `CRASH:${err.msg} ${err.code} ${Date.now()} ${data}\n`
+    const err_txt = `${err.fatal ? 'Fatal' : 'Warning'}: ${err.err} ${err.code} ${Date.now()} ${data}\n`
     console.error(err_txt);
     fs.writeFileSync("crash.txt", err_txt)
+    if(err.fatal) process.kill(process.pid);
 }
 
 // Chama o banco de dados para fazer a validação
@@ -105,10 +100,16 @@ function callDB(cpf, token)
 
 
 
+// Interface externa que invocará estes métodos
+module.exports = 
+{
+    handleForIncommingRequests,
+    error,
+}
 
 /**
  * Erros:
  *      0 - Forbiden character
  *      1 - Missing args
- * 
+ *      3 - Missing callback(fatal)
  */
