@@ -1,5 +1,6 @@
 /**
  * @todo testar
+ * @todo estabelecer o protocolo cliente/servidor
  * @todo tratar a resposta do mysql
  * @todo tentar um mysql injection
  * @todo tentar um cross site scripting
@@ -19,7 +20,7 @@ var con = mysql.createConnection({
 
 
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
-function handleForIncommingRequests(data, callback)
+function handleForIncommingRequests(socket)
 {
     if (!callback) error({fatal:true, error:"Missing callback on handleForIncommingRequests", code:3 })
     if (!data)
@@ -27,7 +28,19 @@ function handleForIncommingRequests(data, callback)
         error ({err:"missing Args", code:1}, data);
         return;
     }
-
+    socket.on("data", (data) =>
+    {
+        console.log(data.toString());   
+    })
+    check(request);
+}
+function check(request)
+{
+    if (!request)
+    {
+        error({err:"Missing args", code:1,data:`${cpf} ${token}`});
+        return -1;
+    }
     parseRequest(data)
                 .then(async function (cpf, token)
                 {
@@ -48,7 +61,7 @@ function handleForIncommingRequests(data, callback)
                     }
                     error({err:"Forbidden characteres founded!", code:0, data:`${cpf} ${token}`});
                     return -1; }
-                    const res = callDB(cpf, token);
+                    const res = callDB(cpf, token); // Armazena a resposta do mysql
                 })
                 .catch((err) =>
                 {

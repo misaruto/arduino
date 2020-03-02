@@ -26,3 +26,9 @@ module.exports = {
           })
     }
 }
+
+/**
+ * Abre o socket
+ * Instancia a conexão
+ * 2 tipos de requisição
+ */
