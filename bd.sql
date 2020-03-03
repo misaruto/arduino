@@ -21,6 +21,12 @@ CREATE TABLE Logs (
 );
 
 
+CREATE TABLE RFID (
+    tokenRFID VARCHAR(20) NOT NULL PRIMARY KEY,
+    codAluno INT NOT NULL,
+    FOREIGN KEY (codAluno) REFERENCES Aluno(codAluno) ON DELETE CASCADE
+);
+
 
 CREATE VIEW VisaoGeralBolsistas AS
 SELECT      Aluno.codAluno AS codAluno,
@@ -50,9 +56,16 @@ CREATE TRIGGER gerarBolsa AFTER INSERT ON Aluno
   END;
 //
 
-CREATE TABLE RFID (
-    tokenRFID VARCHAR(20) NOT NULL PRIMARY KEY,
-    codAluno INT NOT NULL,
-    FOREIGN KEY (codAluno) REFERENCES Aluno(codAluno) ON DELETE CASCADE
-);
 
+DELIMITER //
+CREATE VIEW VerificaAluno AS 
+  SELECT tokenRFID as token,
+    CASE 
+      WHEN bolsa.ativo = 1 THEN "2"
+      WHEN bolsa.ativo = 0 THEN "1" 
+      ELSE "0" END 
+      AS statuscode 
+      FROM aluno,bolsa,RFID
+    WHERE RFID.codAluno = aluno.codAluno 
+    AND bolsa.codAluno = aluno.codAluno;
+//
