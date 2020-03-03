@@ -57,7 +57,6 @@ CREATE TRIGGER gerarBolsa AFTER INSERT ON Aluno
 //
 
 
-DELIMITER //
 CREATE VIEW VerificaAluno AS 
   SELECT tokenRFID as token,
     CASE 
@@ -68,4 +67,3 @@ CREATE VIEW VerificaAluno AS
       FROM aluno,bolsa,RFID
     WHERE RFID.codAluno = aluno.codAluno 
     AND bolsa.codAluno = aluno.codAluno;
-//
