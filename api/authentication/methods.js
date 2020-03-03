@@ -1,11 +1,13 @@
 /**
  * @todo testar
- * @todo estabelecer o protocolo cliente/servidor
- * @todo tratar a resposta do mysql
- * @todo tentar um mysql injection
  * @todo tentar um cross site scripting
+ * @todo terminar a querry com o db
  */
-
+const errors = [
+    "Forbidden characteres founded!",
+    "Missing args",
+    "Missing callback"
+];
 var mysql = require('mysql');           // Módulo para conectar com o banco de dados
 const configs = require("./configs");   // Configurações gerais
 const fs = require("fs");               // File system, para persistir logs
@@ -22,93 +24,88 @@ var con = mysql.createConnection({
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
 function handleForIncommingRequests(socket)
 {
-    if (!callback) error({fatal:true, error:"Missing callback on handleForIncommingRequests", code:3 })
-    if (!data)
+    // Verificação para caso de erro interno (Bizarro por sinal!)
+    if(!socket) create_log("", {code:2, fatal:true});
+
+    // O que será feito quando uma mensagem chegar do cliente
+    socket.on("data",async function (data)
     {
-        error ({err:"missing Args", code:1}, data);
-        return;
-    }
-    socket.on("data", (data) =>
-    {
-        console.log(data.toString());   
-    })
-    check(request);
+        create_log(`Uncomming message from client: ${data.toString()}`); // Cria um log com a ação
+        const res = await process_request(data.toString());              // Faz todo o processamento e guarda isso em uma constante
+        await socket.write(`${res > 0 ? res : 4}`);                      // Envia a resposta para o cliente, o protocolo é descrito à seguir
+    });                                                                  // Caso a resposta seja negativa, isto indica erro interno
+    socket.on("error", create_log)
 }
-function check(request)
+// Função que processa a requisição
+async function process_request(request)
 {
+    // Verifica se foi passado um dado
     if (!request)
     {
-        error({err:"Missing args", code:1,data:`${cpf} ${token}`});
+        create_log(requst, {code:1, fatal:false});
         return -1;
     }
-    parseRequest(data)
-                .then(async function (cpf, token)
-                {
-                    let ans;
-                    if (ans = await verifyRequest(cpf) < 0)
-                    {
-                        if(ans == -2){
-                            error({err:"Missing args", code:1,data:`${cpf} ${token}`});
-                            return -1;
-                        }
-                        error({err:"Forbidden characteres founded!", code:0,data:`${cpf} ${token}`});
-                        return -1;
-                    }
-                if (await verifyRequest(token) < 0) { 
-                    if(ans == -2){
-                        error({err:"Missing args", code:1,data:`${cpf} ${token}`});
-                        return -1;
-                    }
-                    error({err:"Forbidden characteres founded!", code:0, data:`${cpf} ${token}`});
-                    return -1; }
-                    const res = callDB(cpf, token); // Armazena a resposta do mysql
-                })
-                .catch((err) =>
-                {
-                    error(err);
-                    return -1;
-                });
-}
-// Faz o parse da requisição, recuperando todos os dados devidamente
-function parseRequest(data)
-{
-    return new Promise((accept, reject) =>
+    let ans;                        // Resposta da função
+    // Verifica se é um CPF válido
+    ans = await isAnCPF(request);
+    if (ans < 0){ create_log(request, { code:1, fatal:false} ); return 0; }
+    ans = await verifyRequest(request)  // Executa o método que verifica se existem caracteres proibidos
+    
+    if (ans < 0)                    // Verifica se possui caracteres proibídos
     {
-        
-        if ( !data || !data.indexOf(";") ) reject({err:"Missing args", code:1, data});
-        const d = data.split(";");
-        accept(d[0], d[1]);
-    })
+        // Trata o erro
+        if(ans == -2){
+            create_log(request, {code:1, fatal:false});
+            return -1;
+        }
+        create_log(request, {code:0, fatal:false});
+        return -1;
+    }
+    return callDB(cpf); // Retorna a resposta do banco de dados
 }
-// Verifica se não há caracteres inválidos, e se todos os argumentos estão corretos
+// Verifica se é um cpf válido
+function isAnCPF(cpf){}
 
+// Verifica se não há caracteres inválidos, e se todos os argumentos estão corretos
 function verifyRequest(content)
 {
     if (!content) return -2;
     const leng = content.length;
+    // Verifica se o conteúdo possui caracteres que não são numéricos
     for (let i = 0; i<leng; i++)
         if (content.substr(i, 1)  < "0" || content.substr(i, 1) > "9" ) return -1;
     return 1;
 }
-function error(err, data)
+// Função que cria um log
+function create_log(data, err)
 {
-    const err_txt = `${err.fatal ? 'Fatal' : 'Warning'}: ${err.err} ${err.code} ${Date.now()} ${data}\n`
-    console.error(err_txt);
-    fs.writeFileSync("crash.txt", err_txt)
-    if(err.fatal) process.kill(process.pid);
+    if (err)
+    {
+        const err_txt = `${err.fatal ? 'Fatal' : 'Warning'}: ${err.code} ${errors[err.code]} ${Date.now()} ${data}\n`
+        console.error(err_txt);
+        fs.writeFileSync("crash.txt", err_txt)
+        if(err.fatal) process.kill(process.pid);
+    }
+    else
+    {
+        const msg = `Incoming message receiving: ${data}\n`;
+        console.error(msg);
+        fs.writeFileSync("crash.txt", msg)
+    }
 }
 
 // Chama o banco de dados para fazer a validação
-function callDB(cpf, token)
+function callDB(cpf)
 {
-    configs.database.querry.format(cpg, token)
+    /*configs.database.querry.replace("$", cpf);
     con.connect(function(err) {
-        if (err) error();
+        if (err) create_log(err);
         con.query(querry, function (err, result, fields) {
           if (err) throw err;
           console.log(result);
         });
       });
+      */
 }
 
 
@@ -117,12 +114,16 @@ function callDB(cpf, token)
 module.exports = 
 {
     handleForIncommingRequests,
-    error,
 }
-
+/**
+ * Respostas para o cliente:
+ *      0 - Usuário não existe
+ *      1 - Usuário existe mas não tem permissão para entrar
+ *      2 - Usuário existe e está permitido à entrar
+ */
 /**
  * Erros:
  *      0 - Forbiden character
  *      1 - Missing args
- *      3 - Missing callback(fatal)
+ *      2 - Missing callback(fatal)
  */
