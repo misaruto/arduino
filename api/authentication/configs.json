@@ -1,12 +1,12 @@
 {
     "port":8080,
-    "host":"192.168.0.103",
+    "host":"192.168.1.144",
     "exclusive":true, 
     "database":{
         "host": "localhost",
-        "user": "yourusername",
-        "password": "yourpassword",
-        "database": "mydb",
-        "qerry":null
+        "user": "root",
+        "password": "",
+        "database": "arduino",
+        "querry":"SELECT bolsaAtiva FROM `VisaoGeralBolsistas` WHERE cpf=$"
     }
 }
