@@ -32,8 +32,11 @@ function handleForIncommingRequests(socket)
     {
         create_log(`Uncomming message from client: ${data.toString()}`); // Cria um log com a ação
         var res = 0; 
+        var teste = data.toString();
+        if (teste.length >= 11) { 
         res = await process_request(data.toString());                    // Faz todo o processamento e guarda isso em uma variável
-        await socket.write(`${ res >= 0 ? res : 4 }`);                   // Envia a resposta para o cliente, o protocolo é descrito à seguir
+        await socket.write(`${ res >= 0 ? res : 4 }`);
+        }                                                                // Envia a resposta para o cliente, o protocolo é descrito à seguir
     });                                                                  // Caso a resposta seja negativa, isto indica erro interno
     socket.on("error", create_log)
 }

@@ -26,7 +26,12 @@ const int port = 8080;
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
 //Define o tipo de etiqueta que será lida, no caso MIFARE Classic
 MFRC522::MIFARE_Key key;
-
+MFRC522::StatusCode status;
+ byte blockAddr      = 4;
+ byte buffer[18];
+ byte size = sizeof(buffer);
+ byte sector         = 1;
+     
 //include lcd
 #include <LiquidCrystal.h>
 //Armazena os vaores dos pinos onde o LCD está conectado
@@ -71,7 +76,7 @@ int contDigitos = 0;
 
 //Variveis de dados e respostas
 String cpf = "";
-
+uint8_t giro[2];
 int flagLCD = 0;
 int statusCode = 0;
 //Função que converte o resultdado da leitura do cartão rfid para String
@@ -89,8 +94,19 @@ void printConexaoStatus();
 //declara função que faz a comunicação via tcp com o servidor
 void comunicaComServidor();
 
-void setup() {
+//declara função que realiza a conexão com o servidor
+void conectaServidor();
 
+
+void dump_byte_array(byte *buffer, byte bufferSize) {
+    for (byte i = 0; i < bufferSize; i++) {
+        //Serial.write(buffer[i] < 0x10 ? " 0" : " ");
+        Serial.write(buffer[i]);
+    }
+}
+
+void setup() {
+ 
   //iniciando mensagem do lcd
   lcd.begin(16, 2);
   lcd.clear();
@@ -123,56 +139,9 @@ void setup() {
     key.keyByte[i] = 0xFF;
   }
 
+  //chama a função que abre a conexão com o servidor
+  conectaServidor();
 
-  int flagInternet = 0;
-
-  while (flagInternet == 0) {
-
-    lcd.clear();
-    lcd.home();
-    lcd.print("Conectando");
-    lcd.setCursor(0, 1);
-    lcd.print("a internet");
-
-    if (Ethernet.begin(mac)) {
-
-      if (client.connect(IPAddress(ip[0], ip[1], ip[2], ip[3]), port)) {
-
-        Serial.println("Client connected");
-        printConexaoStatus();
-        digitalWrite(rele, LOW);
-        next = 0;
-        flagInternet = 1;
-
-      }
-      else {
-        Serial.println("Erro ao conectar");
-        printConexaoStatus();
-
-        next = 0;
-        lcd.clear();
-        lcd.home();
-        lcd.print("Erro ao conectar");
-        lcd.setCursor(0, 1);
-        lcd.print("a internet");
-        delay(2000);
-        flagInternet = 0;
-      }
-    }
-    else {
-      Serial.println("Erro ao conectar a internet.");
-      Serial.println("Tentando novamente");
-
-      lcd.clear();
-      lcd.home();
-      lcd.print("Erro ao conectar");
-      lcd.setCursor(0, 1);
-      lcd.print("a internet");
-
-      delay(2000);
-      flagInternet = 0;
-    }
-  }
 }
 
 
@@ -240,11 +209,65 @@ void loop() {
 
   contDigitos = convertArrayCpf(rfid.uid);
   Serial.println(contDigitos);
+  
   if (contDigitos == 11) {
     comunicaComServidor();
 
   }
 }
+//Função que realiza a conexão com o servidor
+void conectaServidor(){
+    int flagInternet = 0;
+    while (flagInternet == 0) {
+
+    lcd.clear();
+    lcd.home();
+    lcd.print("Conectando");
+    lcd.setCursor(0, 1);
+    lcd.print("a internet");
+
+    if (Ethernet.begin(mac)) {
+       Serial.println("Modulo iniciado \nConectando ao servidor.");
+      if (client.connect(IPAddress(ip[0], ip[1], ip[2], ip[3]), port)) {
+
+        Serial.println("Client connected");
+        printConexaoStatus();
+        digitalWrite(rele, LOW);
+        next = 0;
+        flagInternet = 1;
+
+      }
+      else {
+        Serial.println("Erro ao conectar");
+        printConexaoStatus();
+
+        next = 0;
+        lcd.clear();
+        lcd.home();
+        lcd.print("Erro ao conectar");
+        lcd.setCursor(0, 1);
+        lcd.print("a internet");
+        delay(2000);
+        flagInternet = 0;
+      }
+    }
+    else {
+      Serial.println("Erro ao conectar a internet.");
+      Serial.println("Tentando novamente");
+
+      lcd.clear();
+      lcd.home();
+      lcd.print("Erro ao conectar");
+      lcd.setCursor(0, 1);
+      lcd.print("a internet");
+
+      delay(2000);
+      flagInternet = 0;
+    }
+  }
+}
+
+
 //função que imprime o status da conexão com a internet
 void printConexaoStatus() {
   Serial.print("localIP: ");
@@ -254,6 +277,9 @@ void printConexaoStatus() {
   Serial.print("gatewayIP: ");
   Serial.println(Ethernet.gatewayIP());
   Serial.print("dnsServerIP: ");
+#define SS_PIN 10
+#define RST_PIN 9
+ 
   Serial.println(Ethernet.dnsServerIP());
 }
 
@@ -323,26 +349,72 @@ bool travaCatraca() {
   //flag de entrada no loop
   int flagLoop = 1;
   //flag que verifica se o ldr foi em algum momento coberto.
-  int flagLDR = 0;
-
+  int flagLDR1 = 0,flagLDR2 = 0;
+  
+  /*
+   * O giro será medido da seguinte forma
+   * Se o A9 for tapado primeiro e em seguida o A8,  a catraca girou no sentido Horario
+   * olhando de frente pra catraca
+   * Se for o A8 tapado primeiro e em seguida o A9, a catraca girou no sentido Anti Horario
+   * olhando de frente pra catraca
+   * 
+   *No sentido horario o valor incluido na variavel giro sera de 1
+   *E no anti horario de -1
+   */
   Serial.println("Entou na funcao");
 
   while (flagLoop == 1) {
-    Serial.println(analogRead(A8));
-
-    /*verifica se o pino A8 que conecta a um LDR se fez leitura menor que 400,
-      o que indica que o sensor foi tapado*/
-    if (analogRead(A8) <= 400) {
+    /*
+      Serial.println("Fazendo leituras\nLendo A9");
+      Serial.println(analogRead(A9));
+      Serial.println("Lendo A8");
+      Serial.println(analogRead(A8));
+      
+      verifica se o pino A8 que conecta a um LDR se fez leitura menor que 400,
+      o que indica que o sensor foi tapado
+      */
+    if (analogRead(A8) <= 400 && flagLDR2 == 0 && analogRead(A9) >= 800) {
       //muda o valor da flag
-      flagLDR = 1;
+      flagLDR1 = 1;
+      int flagLoop2 =1;
+      
+      while(flagLoop2 == 1){
+       // Serial.println(analogRead(A9));
+        if (analogRead(A8) <= 400 && flagLDR2 == 0 && analogRead(A9) <= 400 && flagLDR1 == 1) {
+            giro[0] = -1;
+            flagLDR2 = 1;
+           
+        }
+        if(flagLDR2 == 1 && flagLDR1 ==1 && giro[0] != 0){
+          if(analogRead(A8) >= 800 && analogRead(A9) >= 800){
+            flagLoop = 0;
+            flagLoop2 = 0; 
+            digitalWrite(pinLaser, LOW);
+            return true;
+          }
+        }
+      }
     }
-
-    //verifica se há incidencia de luz no ldr e se o mesmo já foi tapado anteriormente
-    if (analogRead(A8) >= 800 && flagLDR == 1) {
-      flagLoop = 0;
-      //apaga o lase do sensor
-      digitalWrite(pinLaser, LOW);
-      return true;
+    if (analogRead(A9) <= 400 && flagLDR1 == 0 && analogRead(A8) >= 800) {
+      //muda o valor da flag
+      flagLDR2 = 1;
+      flagLDR1 = 0;
+      int flagLoop2 =1;
+      while(flagLoop2 == 1){
+        //Serial.println(analogRead(A8));
+        if (analogRead(A9) <= 400 && flagLDR1 == 0 && analogRead(A8) <= 400 && flagLDR2 == 1) {
+            giro[0] = 1;
+            flagLDR1 = 1;
+        }
+        if(flagLDR2 == 1 && flagLDR1 ==1 && giro[0] != 0){
+          if(analogRead(A8) >= 800 && analogRead(A9) >= 800){
+            flagLoop = 0;
+            flagLoop2 = 0;
+            digitalWrite(pinLaser, LOW);
+            return true;
+          }
+        }
+      }
     }
   }
 }
@@ -351,6 +423,7 @@ bool travaCatraca() {
 void comunicaComServidor() {
   //verifica se já recebeu os 11 numeros do cpf
   if (cpf.length() == 11) {
+    if ((client.available()) >= 0) {
     //cria um vetor de 11 espaços
     uint8_t cpf_converted[12];
     //converte a string cpf para um array uint8_t
@@ -368,6 +441,7 @@ void comunicaComServidor() {
         msg = client.read();
 
         Serial.write(msg);
+        
         //chama função que libera a catraca
         liberaCatraca(msg);
 
@@ -375,11 +449,24 @@ void comunicaComServidor() {
         cpf = "";
         flagLCD = 0;
         break;
+        
       }
       else {
-        Serial.println("Wainting for server...");
-
+        if(flagLCD>=1){
+        flagLCD = flagLCD+1;
+        //informa status pelo lcd
+        lcd.clear();
+        lcd.home();
+        lcd.print("Esperando pelo");
+        lcd.setCursor(0,1);
+        lcd.print("servidor.");
+        //delay(1000);
+        }
+        }
       }
+    }
+    else{
+      conectaServidor();
     }
   }
   //Verifica se o conseguiu comunicar com o servidor
@@ -403,7 +490,7 @@ void liberaCatraca(uint8_t &response) {
     lcd.home();
     lcd.print("Autorizado");
     //envia sinal sonoro
-    tone(pinBuzzer, 929, 200);
+    tone(pinBuzzer, 1023, 200);
 
     //libera a catraca
     digitalWrite(rele, HIGH);
@@ -414,13 +501,31 @@ void liberaCatraca(uint8_t &response) {
 
     //chama e verifica a função que verifica os casos da catraca
     if (travaCatraca()) {
-
       //trava a catraca
       digitalWrite(rele, LOW);
+      Serial.println("Enviando pra onde foi o giro.");
+      //Serial.println(giro);
+      //comunica pra onde foi o giro da catraca
+       if(giro[0] !=0){
+        if(client.write(giro>=0 ? "1" :"-1",1)){
+          Serial.println("Enviado");
+          int flagLoop = 1;
+          while(flagLoop == 1){
+             if(client.available() > 0){
+              uint8_t msg = client.read();
+              if(msg == '2'){
+                Serial.println("Tudo Certo");
+                flagLoop = 0;
+              }
+             }
+          }
+        }
+       }
       //zera todas as variaveis
       //envia mensagem de que travou a catraca
       lcd.setCursor(0, 1);
       lcd.print("Catraca travada");
+      giro[0] =0;
       contDigitos = 0;
       cpf = "";
       flagLCD = 0;
