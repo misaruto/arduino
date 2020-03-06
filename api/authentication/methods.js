@@ -263,4 +263,3 @@ module.exports =
  *      2 - Ok!
  * Formato da query: opcode;cpf
  */
-process_request("0;09338490602")
