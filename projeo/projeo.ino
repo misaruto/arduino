@@ -104,6 +104,7 @@ void dump_byte_array(byte *buffer, byte bufferSize) {
         Serial.write(buffer[i]);
     }
 }
+bool autenticaServidor();
 
 void setup() {
  
@@ -141,9 +142,16 @@ void setup() {
 
   //chama a função que abre a conexão com o servidor
   conectaServidor();
-
+  autenticaServidor();
 }
-
+bool autenticaServidor()
+{
+ client.write("123");
+ while(client.available() == 0){}
+ int res = client.read();
+ Serial.print("Resposta do servidor: ");
+ Serial.println(res);
+}
 
 
 void loop() {
@@ -229,7 +237,6 @@ void conectaServidor(){
     if (Ethernet.begin(mac)) {
        Serial.println("Modulo iniciado \nConectando ao servidor.");
       if (client.connect(IPAddress(ip[0], ip[1], ip[2], ip[3]), port)) {
-
         Serial.println("Client connected");
         printConexaoStatus();
         digitalWrite(rele, LOW);
@@ -431,6 +438,7 @@ void comunicaComServidor() {
     //faz uma verificação necessária mas que nn faço a minima ideia do pq
     Serial.println("Client connect");
     //comunica com o servidor via tcp
+    client.write("0;",2);
     client.write(cpf_converted, 11);        //cpf_converted
     //verirca se a comunicação aind persiste
     while (client.available() >= 0) {
@@ -507,7 +515,7 @@ void liberaCatraca(uint8_t &response) {
       //Serial.println(giro);
       //comunica pra onde foi o giro da catraca
        if(giro[0] !=0){
-        if(client.write(giro>=0 ? "1" :"-1",1)){
+        if(client.write(giro>=0 ? "1;1" :"1;2",3)){
           Serial.println("Enviado");
           int flagLoop = 1;
           while(flagLoop == 1){

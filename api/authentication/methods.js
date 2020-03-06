@@ -30,7 +30,7 @@ var con = mysql.createConnection({
 });
 /*-----------------------------------------------------------------------------------*/
 // Constantes globais
-const ticketGates = [];             // Lista com as catracas permitidas
+const ticketGates = ['123'];             // Lista com as catracas permitidas
 const connections = [];             // Array com todas as conexões
 /*-----------------------------------------------------------------------------------*/
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
@@ -43,25 +43,29 @@ function handleForIncommingRequests(socket)
         this.autenticated = false;
         this.index        = 0;
     });
+
     // O que será feito quando uma mensagem chegar do cliente
-    socket.on("data",async function (data)
+    socket.on("data", async function (data)
     {
+
         if (this.autenticated)
         {
-            create_log(`Uncomming message from client: ${data.toString()}`); // Cria um log com a ação
+            create_log(`${data.toString()}`); // Cria um log com a ação
             var res = 0; 
-            var teste = data.toString();
-            if (teste.length >= 11) { 
-                res = await process_request(data.toString());                    // Faz todo o processamento e guarda isso em uma variável
+            var request = data.toString();
+            if (request.length >= 11) { 
+                res = await process_request(request, this.index);                    // Faz todo o processamento e guarda isso em uma variável
             }
-            await socket.write(`${ res >= 0 ? res : 4 }`);                       // Envia a resposta para o cliente, o protocolo é descrito à seguir
+            this.write(`${ res >= 0 ? res : 4 }`);                       // Envia a resposta para o cliente, o protocolo é descrito à seguirs
         }
         else 
         {
+            create_log("New ticketGate:" + data.toString());
             res = await authenticateTicketGate(data.toString());  
-            this.index = res >= 1? res:null;
-            socket.end( );
-            return 0;
+            await socket.write(`${res >= 0? 2:-1}`);
+            this.index = res >= 0 ? res : null;
+            this.autenticated = res >= 0 ? true : false;
+            if (res < 0) socket.end();
         }
     });                                                 
     socket.on("error", create_log)
@@ -74,42 +78,56 @@ function authenticateTicketGate(auth_token)
     else { create_log (auth_token, {code:5, fatal:false}); return 3; }
 }
 // Função que processa a requisição
-async function process_request(request)
+async function process_request(request, index)
 {
+    let res;
     // Verifica se foi passado um dado
     if (!request)
     {
         create_log(requst, {code:1, fatal:false});
         return -1;
     }
-    if (request.indexOf(";")<0)
+    if (request.indexOf(";") < 0)
     {
         create_log(request, {code:4, fatal:false});
         return -1;
     }
-    let opcode = request.split(";")[0];
-    if (opcode == 0) {return tryngAuthentication(request.split(";")[1])}
-    else if (opcode == 1) { return processEntry(); }
-
-    else 
+    else
     {
-        create_log(request, {code:4, fatal:false});
-        return -1;
+        let opcode = request.split(";")[0];
+        if (opcode == 0) {
+            res = await tryngAuthentication(request.split(";")[1], connections[index].autenticated); 
+            if (res == 2 ){ connections[index].autenticated = request.split(";")[1]; return 2; }
+            else return res;
+        }
+       
+        else if (opcode == 1 && connections[index].autenticated) { 
+            res = await processEntry(request.split(";")[1], connections[index].autenticated);
+            if (res == 2){ connections[index].autenticated = false; return 2; }
+            else return res;
+        }
+        else 
+        {
+            create_log(request, {code:4, fatal:false});
+            return -1;
+        }
     }
 
 }
-function processEntry(act)
+function processEntry(act, auth)
 {
     if (!act){ create_log(act, {fatal:true, err:1}); return -1; }
+    return 2;
+
     const query = configs.database.updt.replace("$", auth)
                                        .replace("$", act);
     return callDB(query)
             .then((data) =>
             {
-                return data;
+                return 2;
             })
 }
-async function tryngAuthentication(request)
+async function tryngAuthentication(request, index)
 {
     let ans;                        // Resposta da função
 
@@ -181,14 +199,13 @@ function verifyRequest(content)
     const leng = content.length;
     // Verifica se o conteúdo possui caracteres que não são numéricos
     for (let i = 0; i<leng; i++)
-        if ((content.substr(i, 1)  <= "0"-1 || content.substr(i, 1) >= "9"+1)){ console.log(content.substr(i, 1));return -1; }
+        if ((content.substr(i, 1)  <= "0"-1 || content.substr(i, 1) >= "9"+1)){ return -1; }
     return 1;
 }
 
 // Função que cria um log
 function create_log(data, err)
 {
-    console.log(data)
     if (err)
     {
         const err_txt = `${err.fatal ? 'Fatal' : 'Warning'}: ${err.code} ${errors[err.code]} ${Date.now()} ${data}\n`
@@ -217,7 +234,6 @@ function callDB(query){
         {
             con.query(query, function (err, result, fields)
             {
-                console.log("mysql");
                 if (err) { create_log("Mysql: " + err); return -1 };
                 if (result.length == 0) { accept(0); }
                 if (result.length > 0){
