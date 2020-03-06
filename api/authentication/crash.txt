@@ -1,1 +1,0 @@
-Incoming message receiving: Uncomming message from client: 05120010700
