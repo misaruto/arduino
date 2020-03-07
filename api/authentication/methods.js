@@ -16,9 +16,9 @@ const errors = [
 ];
 /*-----------------------------------------------------------------------------------*/
 // Requisitando os módulos
-var mysql = require('mysql');           // Módulo para conectar com o banco de dados
-const configs = require("./configs");   // Configurações gerais
-const fs = require("fs");               // File system, para persistir logs
+const mysql   = require('mysql');           // Módulo para conectar com o banco de dados
+const configs = require("./configs");       // Configurações gerais
+const fs      = require("fs");              // File system, para persistir logs
 
 /*-----------------------------------------------------------------------------------*/
 // Cria a conexão com o mysql
@@ -74,7 +74,7 @@ function handleForIncommingRequests(socket)
 function authenticateTicketGate(auth_token)
 {
     if (ticketGates.indexOf(auth_token)>=0){ connections.push({auth_token, isConnected:true, state:0, autenticated:null }); return connections.length -1; }
-    else { create_log (auth_token, {code:5, fatal:false}); return 3; }
+    else { create_log (auth_token, {code:5, fatal:false}); return -1; }
 }
 // Função que processa a requisição
 async function process_request(request, index)
@@ -242,12 +242,23 @@ function callDB(query){
         });
     });
 }
+function init(tcpServer){
+    getAlowedTicketGate();                         // Busca a lista de catracas permitidas
+    tcpServer.create(handleForIncommingRequests);  // Cria um servidor
+    tcpServer.onerror = create_log;                // Passa create_log como callback para erros no server
+    tcpServer.listen();                            // Ouve por requisições
+}
 
+// Busca no banco de dados, a lista de todas as catracas com permissão
+function getAlowedTicketGate()
+{
+    /** @todo: Implementar essa função e fazer a authenticateTicketGate chamar ela */
+}
 
 // Interface externa que invocará estes métodos
 module.exports = 
 {
-    handleForIncommingRequests,
+    init
 }
 
 /**
