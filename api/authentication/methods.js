@@ -38,37 +38,36 @@ function handleForIncommingRequests(socket)
 {
     // Verificação para caso de erro interno (Bizarro por sinal!)
     if(!socket) create_log("", {code:2, fatal:true});
+    // Oque será feito quando a conexão for aberta
     socket.on("connect", () =>
     {
-        this.autenticated = false;
-        this.index        = 0;
+        this.autenticated = false;                  // Atributo que dirá se a catraca está autorisada
+        this.index        = 0;                      // Atributo que guardará o id da catraca em connections
     });
 
     // O que será feito quando uma mensagem chegar do cliente
     socket.on("data", async function (data)
     {
-
-        if (this.autenticated)
+        // Verifica se ela está logada
+        if (this.autenticated)                                  // Se sim, faça o seguinte:
         {
-            create_log(`${data.toString()}`); // Cria um log com a ação
-            var res = 0; 
-            var request = data.toString();
-            if (request.length >= 11) { 
-                res = await process_request(request, this.index);                    // Faz todo o processamento e guarda isso em uma variável
-            }
-            this.write(`${ res >= 0 ? res : 4 }`);                       // Envia a resposta para o cliente, o protocolo é descrito à seguirs
+            create_log(`${data.toString()}`);                   // Cria um log com a ação
+            let res = 0;                                        // Variável temporária que guardará a resposta para o cliente
+            var request = data.toString();                      // Recupera a requisição
+            res = await process_request(request, this.index);   // Faz todo o processamento e guarda isso em uma variável
+            this.write(`${ res >= 0 ? res : 4 }`);              // Envia a resposta para o cliente, o protocolo é descrito à seguirs
         }
-        else 
+        else                                                    // Caso contrário, faça isso: 
         {
-            create_log("New ticketGate:" + data.toString());
-            res = await authenticateTicketGate(data.toString());  
-            await socket.write(`${res >= 0? 2:-1}`);
-            this.index = res >= 0 ? res : null;
-            this.autenticated = res >= 0 ? true : false;
-            if (res < 0) socket.end();
+            create_log("New ticketGate:" + data.toString());    // Cria um log com a ação
+            res = await authenticateTicketGate(data.toString());// Tenta autenticar a catraca
+            await socket.write(`${res >= 0? 2:-1}`);            // Devolve o resultado para o cliente
+            this.index = res >= 0 ? res : null;                 // Se a catraca foi autorizada, salve o índice dela...
+            this.autenticated = res >= 0 ? true : false;        // ... e diga que ela está autorizada
+            if (res < 0) socket.end();                          // Se não foi autorizada, encerra a conexão
         }
     });                                                 
-    socket.on("error", create_log)
+    socket.on("error", create_log)                              // Caso dê erro com a conexão, jogue isto no log
 }
 
 // Função que autentica a catraca no início da conexão
@@ -114,6 +113,7 @@ async function process_request(request, index)
     }
 
 }
+// Processa a entrada de um aluno(a direção)
 function processEntry(act, auth)
 {
     if (!act){ create_log(act, {fatal:true, err:1}); return -1; }
@@ -127,36 +127,33 @@ function processEntry(act, auth)
                 return 2;
             })
 }
+// Tenta autenticar o aluno
 async function tryngAuthentication(request, index)
 {
-    let ans;                        // Resposta da função
+    let ans;                                            // Resposta da função
+    ans = await verifyRequest(request)                  // Executa o método que verifica se existem caracteres proibidos
 
-    // Verifica se existem caracteres inválidos
-    ans = await verifyRequest(request)  // Executa o método que verifica se existem caracteres proibidos
-
-    if (ans < 0)                        // Verifica se possui caracteres proibídos
+    if (ans < 0)                                        // Verifica se possui caracteres proibídos
     {
         
         // Trata o erro
         if(ans == -2){
-            create_log(request, {code:1, fatal:false});
+            create_log(request, {code:1, fatal:false}); // Não foi recebido parâmetro (ou está vazio)
             return -1;
         }
-        create_log(request, {code:0, fatal:false});
+        create_log(request, {code:0, fatal:false});     // Caracter inválido recebido
         return -1;
     }
 
-    // Verifica se é um CPF válido
-    ans = await isAnCPF(request);
+    ans = await isAnCPF(request);                       // Verifica se é um CPF válido
 
     if (ans < 0){ create_log(request, { code:3, fatal:false} ); return -1; }
     const query = configs.database.auth.replace("$", request);
-    return callDB(query)                 // Retorna a resposta do banco de dados
+    return callDB(query)                                // Chama o banco de dados
                 .then((data) => 
                     {
-                        return data;
+                        return data;                    // Retorna a resposta do banco de dados
                     });
-                   // Verifica se existem caracteres inválidos
 }
 // Verifica se é um cpf válido
 function isAnCPF(cpf){
