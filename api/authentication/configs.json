@@ -1,0 +1,14 @@
+{
+    "port":8080,
+    "host":"localhost",
+    "exclusive":true, 
+    "database":{
+        "host": "localhost",
+        "user": "root",
+        "password": "",
+        "database": "arduino",
+        "auth":"SELECT bolsaAtiva FROM `VisaoGeralBolsistas` WHERE cpf=$",
+        "updt":""
+    },
+    "logfile":"crash"
+}

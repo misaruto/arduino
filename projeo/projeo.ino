@@ -2,8 +2,8 @@
 //Usada tanto pelo UIPEthernet quanto pelo MRC522
 //            #####explicando######
 /*Os dois modulos se conectam nas mesmas portas, porem tem
-2 pinos especificos para cada um, que é o de conexão do modulo com
-o arduino, no UIPEthernet é o 51 e no MFRC522 é o 35 */
+  2 pinos especificos para cada um, que é o de conexão do modulo com
+  o arduino, no UIPEthernet é o 51 e no MFRC522 é o 35 */
 #include <SPI.h>
 
 //Includes e variaveis para conexão com internet
@@ -12,9 +12,9 @@ o arduino, no UIPEthernet é o 51 e no MFRC522 é o 35 */
 EthernetClient client;
 signed long next;
 //Define um mac para a interface de internet
-uint8_t mac[6] = {0x00,0x01,0x02,0x03,0x04,0x05};
+uint8_t mac[6] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05};
 //Variaveis para conexão
-const int ip[4] = {192,168,1,144};
+const int ip[4] = {192, 168, 1, 144};
 const int port = 8080;
 
 //Include da biblioteca do RFID
@@ -25,8 +25,13 @@ const int port = 8080;
 //Instancia a classe
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
 //Define o tipo de etiqueta que será lida, no caso MIFARE Classic
-MFRC522::MIFARE_Key key; 
-
+MFRC522::MIFARE_Key key;
+MFRC522::StatusCode status;
+ byte blockAddr      = 4;
+ byte buffer[18];
+ byte size = sizeof(buffer);
+ byte sector         = 1;
+     
 //include lcd
 #include <LiquidCrystal.h>
 //Armazena os vaores dos pinos onde o LCD está conectado
@@ -70,8 +75,8 @@ Keypad teclado = Keypad( makeKeymap(matriz), pinsFilas, pinsColumnas, filas, col
 int contDigitos = 0;
 
 //Variveis de dados e respostas
-String cpf= "";
-
+String cpf = "";
+uint8_t giro[2];
 int flagLCD = 0;
 int statusCode = 0;
 //Função que converte o resultdado da leitura do cartão rfid para String
@@ -89,165 +94,189 @@ void printConexaoStatus();
 //declara função que faz a comunicação via tcp com o servidor
 void comunicaComServidor();
 
-void setup() {
+//declara função que realiza a conexão com o servidor
+void conectaServidor();
 
+
+void dump_byte_array(byte *buffer, byte bufferSize) {
+    for (byte i = 0; i < bufferSize; i++) {
+        //Serial.write(buffer[i] < 0x10 ? " 0" : " ");
+        Serial.write(buffer[i]);
+    }
+}
+bool autenticaServidor();
+
+void setup() {
+ 
   //iniciando mensagem do lcd
-  lcd.begin(16,2);
+  lcd.begin(16, 2);
   lcd.clear();
   lcd.home();
   lcd.print("Iniciando");
-  lcd.setCursor(0,1);
+  lcd.setCursor(0, 1);
   lcd.print("Aguarde...");
-  
+
   //sinal sonoro
-  pinMode(pinBuzzer,OUTPUT); 
-  tone(pinBuzzer,361,200);
+  pinMode(pinBuzzer, OUTPUT);
+  tone(pinBuzzer, 361, 200);
   noTone(pinBuzzer);
-  
+
   //inicia o laser de verificação
   pinMode(pinLaser, OUTPUT);
-  digitalWrite(pinLaser,HIGH);
-  
+
   //inicia o rele, inicialmente destrava a catraca, só a trava depois de conectar a internet
-  pinMode(rele, OUTPUT); 
-  digitalWrite(rele,HIGH);
-  
+  pinMode(rele, OUTPUT);
+  digitalWrite(rele, HIGH);
+
   //inciando serial
   Serial.begin(19200);
-  
+
   //Inicia a interface spi
   SPI.begin(); // Init SPI bus
   //Inicia o modulo do RFID
-  rfid.PCD_Init(); // Init MFRC522 
+  rfid.PCD_Init(); // Init MFRC522
   //Preenche a chave do leitor, padrão 0xFF
   for (byte i = 0; i < 6; i++) {
     key.keyByte[i] = 0xFF;
   }
 
-
-  int flagInternet = 0;
-  
-  while(flagInternet == 0){
-
-    lcd.clear();
-    lcd.home();
-    lcd.print("Conectando");
-    lcd.setCursor(0,1);
-    lcd.print("a internet");
-
-    if(Ethernet.begin(mac)){
-
-      if (client.connect(IPAddress(ip[0],ip[1],ip[2],ip[3]),port)){
-
-       Serial.println("Client connected"); 
-       printConexaoStatus();
-       digitalWrite(rele,LOW);
-       next = 0;
-       flagInternet =1;
-
-     }
-     else{
-      Serial.println("Erro ao conectar");
-      printConexaoStatus();
-
-      next = 0;
-      lcd.clear();
-      lcd.home();
-      lcd.print("Erro ao conectar");
-      lcd.setCursor(0,1);
-      lcd.print("a internet");
-      delay(2000);
-      flagInternet = 0;
-    }
-  }
-  else{
-   Serial.println("Erro ao conectar a internet.");
-   Serial.println("Tentando novamente");
-
-   lcd.clear();
-   lcd.home();
-   lcd.print("Erro ao conectar");
-   lcd.setCursor(0,1);
-   lcd.print("a internet");
-
-   delay(2000);
-   flagInternet = 0;
- }
+  //chama a função que abre a conexão com o servidor
+  conectaServidor();
+  autenticaServidor();
 }
+bool autenticaServidor()
+{
+ client.write("123");
+ while(client.available() == 0){}
+ int res = client.read();
+ Serial.print("Resposta do servidor: ");
+ Serial.println(res);
 }
-
 
 
 void loop() {
 
   //flag pra verifica se a mensagem já apareceu, para não reenviar informações para o LCD
-  if(flagLCD == 0){
+  if (flagLCD == 0) {
     Serial.println("Digite uma tecla: ");
     lcd.clear();
     lcd.home();
     lcd.print("Digite seu CPF");
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     flagLCD = 1;
   }
-  
+
   char tecla_presionada = teclado.getKey();    //Almaceno en una variable la tecla presionada
-  if (tecla_presionada != NULL){
-    if (tecla_presionada == 'A'){
-      cpf="";
+  if (tecla_presionada != NULL) {
+    if (tecla_presionada == 'A') {
+      cpf = "";
       contDigitos = 0;
       flagLCD = 0;
     }
-    else{
+    else {
       //concatena o novo digito com os que ja tem na string
-     cpf = cpf + tecla_presionada;
-     //Muda mensagem da tela
-     lcd.clear();
-     lcd.home();
-     lcd.print("Digite seu CPF");
-     lcd.setCursor(0,1);
-     lcd.print("CPF:"+cpf);
+      cpf = cpf + tecla_presionada;
+      //Muda mensagem da tela
+      lcd.clear();
+      lcd.home();
+      lcd.print("Digite seu CPF");
+      lcd.setCursor(0, 1);
+      lcd.print("CPF:" + cpf);
 
-     //informações para serial
-     Serial.print("CPF:");
-     Serial.println(cpf);
-     Serial.println(contDigitos);
-     contDigitos = contDigitos + 1;
-   }
- }
- if(contDigitos == 11){
-  comunicaComServidor();
-}
+      //informações para serial
+      Serial.print("CPF:");
+      Serial.println(cpf);
+      Serial.println(contDigitos);
+      contDigitos = contDigitos + 1;
+    }
+  }
+  if (contDigitos == 11) {
+    comunicaComServidor();
+  }
   // Reset the loop if no new card present on the sensor/reader. This saves the entire process when idle.
-if ( ! rfid.PICC_IsNewCardPresent()){
-  return;
-}
+  if ( ! rfid.PICC_IsNewCardPresent()) {
+    return;
+  }
 
   // Verify if the NUID has been readed
-if ( ! rfid.PICC_ReadCardSerial()){
- return;
-}
+  if ( ! rfid.PICC_ReadCardSerial()) {
+    return;
+  }
 
-Serial.print(F("PICC type: "));
-MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
-Serial.println(rfid.PICC_GetTypeName(piccType));
+  Serial.print(F("PICC type: "));
+  MFRC522::PICC_Type piccType = rfid.PICC_GetType(rfid.uid.sak);
+  Serial.println(rfid.PICC_GetTypeName(piccType));
 
   // Check is the PICC of Classic MIFARE type
-if ((piccType != MFRC522::PICC_TYPE_MIFARE_MINI) &&  (piccType != MFRC522::PICC_TYPE_MIFARE_1K) && (piccType != MFRC522::PICC_TYPE_MIFARE_4K)) {
+  if ((piccType != MFRC522::PICC_TYPE_MIFARE_MINI) &&  (piccType != MFRC522::PICC_TYPE_MIFARE_1K) && (piccType != MFRC522::PICC_TYPE_MIFARE_4K)) {
 
-  Serial.println(F("Your tag is not of type MIFARE Classic."));
-  return;
+    Serial.println(F("Your tag is not of type MIFARE Classic."));
+    return;
+  }
+  Serial.println(F("A new card has been detected."));
+
+  contDigitos = convertArrayCpf(rfid.uid);
+  Serial.println(contDigitos);
+  
+  if (contDigitos == 11) {
+    comunicaComServidor();
+
+  }
 }
-Serial.println(F("A new card has been detected."));
+//Função que realiza a conexão com o servidor
+void conectaServidor(){
+    int flagInternet = 0;
+    while (flagInternet == 0) {
 
-contDigitos = convertArrayCpf(rfid.uid); 
+    lcd.clear();
+    lcd.home();
+    lcd.print("Conectando");
+    lcd.setCursor(0, 1);
+    lcd.print("a internet");
 
-if(contDigitos == 11){
-  comunicaComServidor();
+    if (Ethernet.begin(mac)) {
+       Serial.println("Modulo iniciado \nConectando ao servidor.");
+      if (client.connect(IPAddress(ip[0], ip[1], ip[2], ip[3]), port)) {
+        Serial.println("Client connected");
+        printConexaoStatus();
+        digitalWrite(rele, LOW);
+        next = 0;
+        flagInternet = 1;
 
+      }
+      else {
+        Serial.println("Erro ao conectar");
+        printConexaoStatus();
+
+        next = 0;
+        lcd.clear();
+        lcd.home();
+        lcd.print("Erro ao conectar");
+        lcd.setCursor(0, 1);
+        lcd.print("a internet");
+        delay(2000);
+        flagInternet = 0;
+      }
+    }
+    else {
+      Serial.println("Erro ao conectar a internet.");
+      Serial.println("Tentando novamente");
+
+      lcd.clear();
+      lcd.home();
+      lcd.print("Erro ao conectar");
+      lcd.setCursor(0, 1);
+      lcd.print("a internet");
+
+      delay(2000);
+      flagInternet = 0;
+    }
+  }
 }
-}
+
+
 //função que imprime o status da conexão com a internet
-void printConexaoStatus(){
+void printConexaoStatus() {
   Serial.print("localIP: ");
   Serial.println(Ethernet.localIP());
   Serial.print("subnetMask: ");
@@ -255,60 +284,63 @@ void printConexaoStatus(){
   Serial.print("gatewayIP: ");
   Serial.println(Ethernet.gatewayIP());
   Serial.print("dnsServerIP: ");
+#define SS_PIN 10
+#define RST_PIN 9
+ 
   Serial.println(Ethernet.dnsServerIP());
 }
 
-int convertArrayCpf(MFRC522::Uid &nuid){
-  //Inicia o variavel temporaria que armazena os valores lidos do RFID 
+int convertArrayCpf(MFRC522::Uid &nuid) {
+  //Inicia o variavel temporaria que armazena os valores lidos do RFID
   byte nuidPICC;
   // Converte a NUID de array para String
   cpf = "";
-  contDigitos=0;
+  contDigitos = 0;
   // laço que vai de 0 a 3, pois são coletado em 3 blocos de 3 digitos e 1 de 2 digitos.
   for (byte flagLop = 0; flagLop < 4; flagLop++) {
-  //transforma em array local o que vem do 
+    //transforma em array local o que vem do
     nuidPICC = nuid.uidByte[flagLop];
-  //verifica se o digito é menor que 100 e está entre o 1° e o 9° digito
-    if(nuidPICC < 100 && contDigitos < 9){
-    //se for menor que 100 é necessário adcionar o 0 antes, para se ter 11 digitos
-      cpf = cpf + "0"+nuidPICC;
-    //incrementa mais 3 no contador de digitos
-      contDigitos = contDigitos +3;
+    //verifica se o digito é menor que 100 e está entre o 1° e o 9° digito
+    if (nuidPICC < 100 && contDigitos < 9) {
+      //se for menor que 100 é necessário adcionar o 0 antes, para se ter 11 digitos
+      cpf = cpf + "0" + nuidPICC;
+      //incrementa mais 3 no contador de digitos
+      contDigitos = contDigitos + 3;
     }
-  //se os digitos não forem menores que 100
-    else{
-    //verifica se ainda está entre o 1° e o 9° digito
-      if(contDigitos < 9){
-      //se sim concatena na string
-        cpf = cpf +nuidPICC;
-      //incrementa mais 3 nos digitos
-        contDigitos = contDigitos +3;
+    //se os digitos não forem menores que 100
+    else {
+      //verifica se ainda está entre o 1° e o 9° digito
+      if (contDigitos < 9) {
+        //se sim concatena na string
+        cpf = cpf + nuidPICC;
+        //incrementa mais 3 nos digitos
+        contDigitos = contDigitos + 3;
       }
     }
-  //Verifica se os ultimos digitos são menores que 10, se está entre o 9° e 11° digito e se está no ultimo bloco 
-    if((nuidPICC < 10) &&( contDigitos >=9) && (contDigitos < 11) &&(flagLop == 3)){
-    //Concatena o valor com o 0 antes
-      cpf = cpf +"0"+ nuidPICC;
-    //incrementa o numero de digitos
-      contDigitos = contDigitos+2;
+    //Verifica se os ultimos digitos são menores que 10, se está entre o 9° e 11° digito e se está no ultimo bloco
+    if ((nuidPICC < 10) && ( contDigitos >= 9) && (contDigitos < 11) && (flagLop == 3)) {
+      //Concatena o valor com o 0 antes
+      cpf = cpf + "0" + nuidPICC;
+      //incrementa o numero de digitos
+      contDigitos = contDigitos + 2;
     }
-  //senão
-    else{
-    //se for os ultimos digitos, porem são maiores que 10
-      if(( contDigitos >=9) && (contDigitos < 11)&&(flagLop == 3)){
+    //senão
+    else {
+      //se for os ultimos digitos, porem são maiores que 10
+      if (( contDigitos >= 9) && (contDigitos < 11) && (flagLop == 3)) {
         //concatena a String
         cpf = cpf + nuidPICC;
         //incrementa os digitos
-        contDigitos=contDigitos+2;
+        contDigitos = contDigitos + 2;
       }
     }
-  //imprime a evolução da coleta dos digitos
-    Serial.println("CPF: "+cpf);
-    Serial.println(contDigitos);
-    Serial.println(flagLop);
+    //imprime a evolução da coleta dos digitos
+    // Serial.println("CPF: "+cpf);
+    // Serial.println(contDigitos);
+    // Serial.println(flagLop);
   }
   //imprime a String contendo os digitos por completa
-  Serial.println("CPF: "+cpf);
+  Serial.println("CPF: " + cpf);
 
   // Halt PICC
   rfid.PICC_HaltA();
@@ -318,138 +350,212 @@ int convertArrayCpf(MFRC522::Uid &nuid){
 }
 
 //função que verifica o estado da catraca, sempre retorna true.
-bool travaCatraca(){
-
+bool travaCatraca() {
+  //Acende o laser do sensor
+  digitalWrite(pinLaser, HIGH);
   //flag de entrada no loop
-  int flagLoop =1;
+  int flagLoop = 1;
   //flag que verifica se o ldr foi em algum momento coberto.
-  int flagLDR =0;
+  int flagLDR1 = 0,flagLDR2 = 0;
   
+  /*
+   * O giro será medido da seguinte forma
+   * Se o A9 for tapado primeiro e em seguida o A8,  a catraca girou no sentido Horario
+   * olhando de frente pra catraca
+   * Se for o A8 tapado primeiro e em seguida o A9, a catraca girou no sentido Anti Horario
+   * olhando de frente pra catraca
+   * 
+   *No sentido horario o valor incluido na variavel giro sera de 1
+   *E no anti horario de -1
+   */
   Serial.println("Entou na funcao");
-  
-  while(flagLoop == 1){
-    Serial.println(analogRead(A8));
 
-    /*verifica se o pino A8 que conecta a um LDR se fez leitura menor que 400,
-    o que indica que o sensor foi tapado*/
-    if(analogRead(A8) <=400){
+  while (flagLoop == 1) {
+    /*
+      Serial.println("Fazendo leituras\nLendo A9");
+      Serial.println(analogRead(A9));
+      Serial.println("Lendo A8");
+      Serial.println(analogRead(A8));
+      
+      verifica se o pino A8 que conecta a um LDR se fez leitura menor que 400,
+      o que indica que o sensor foi tapado
+      */
+    if (analogRead(A8) <= 400 && flagLDR2 == 0 && analogRead(A9) >= 800) {
       //muda o valor da flag
-      flagLDR = 1;
+      flagLDR1 = 1;
+      int flagLoop2 =1;
+      
+      while(flagLoop2 == 1){
+       // Serial.println(analogRead(A9));
+        if (analogRead(A8) <= 400 && flagLDR2 == 0 && analogRead(A9) <= 400 && flagLDR1 == 1) {
+            giro[0] = -1;
+            flagLDR2 = 1;
+           
+        }
+        if(flagLDR2 == 1 && flagLDR1 ==1 && giro[0] != 0){
+          if(analogRead(A8) >= 800 && analogRead(A9) >= 800){
+            flagLoop = 0;
+            flagLoop2 = 0; 
+            digitalWrite(pinLaser, LOW);
+            return true;
+          }
+        }
+      }
     }
-
-    //verifica se há incidencia de luz no ldr e se o mesmo já foi tapado anteriormente
-    if (analogRead(A8)>=800 && flagLDR == 1){
-      flagLoop =0;
-      return true;
+    if (analogRead(A9) <= 400 && flagLDR1 == 0 && analogRead(A8) >= 800) {
+      //muda o valor da flag
+      flagLDR2 = 1;
+      flagLDR1 = 0;
+      int flagLoop2 =1;
+      while(flagLoop2 == 1){
+        //Serial.println(analogRead(A8));
+        if (analogRead(A9) <= 400 && flagLDR1 == 0 && analogRead(A8) <= 400 && flagLDR2 == 1) {
+            giro[0] = 1;
+            flagLDR1 = 1;
+        }
+        if(flagLDR2 == 1 && flagLDR1 ==1 && giro[0] != 0){
+          if(analogRead(A8) >= 800 && analogRead(A9) >= 800){
+            flagLoop = 0;
+            flagLoop2 = 0;
+            digitalWrite(pinLaser, LOW);
+            return true;
+          }
+        }
+      }
     }
   }
 }
 
 //faz a comunicação com o servidor
-void comunicaComServidor(){
-  Serial.println("Baianor kk");
- //verifica se já recebeu os 11 numeros do cpf
-  if(cpf.length() == 11){
+void comunicaComServidor() {
+  //verifica se já recebeu os 11 numeros do cpf
+  if (cpf.length() == 11) {
+    if ((client.available()) >= 0) {
     //cria um vetor de 11 espaços
-    uint8_t cpf_converted[11];
+    uint8_t cpf_converted[12];
     //converte a string cpf para um array uint8_t
-    cpf.toCharArray(cpf_converted,11);
+    cpf.toCharArray(cpf_converted, 12);
     //faz uma verificação necessária mas que nn faço a minima ideia do pq
-    if (((signed long)(millis() - next)) > 0){
-
-      next = millis() + 5000;
-      Serial.println("Client connect");
-      //comunica com o servidor via tcp
-      client.write(cpf_converted,11);
-      //verirca se a comunicação aind persiste
-      if((client.available()) > 0){
+    Serial.println("Client connect");
+    //comunica com o servidor via tcp
+    client.write("0;",2);
+    client.write(cpf_converted, 11);        //cpf_converted
+    //verirca se a comunicação aind persiste
+    while (client.available() >= 0) {
+      if ((client.available()) > 0) {
         //variavel temporaria para a resposta do server
         uint8_t msg;
         //pega a resposta do servidor, retorno em ASCII
         msg = client.read();
 
-        Serial.println(msg);
+        Serial.write(msg);
+        
         //chama função que libera a catraca
         liberaCatraca(msg);
 
         contDigitos = 0;
-        cpf = "";        
-        flagLCD=0;
+        cpf = "";
+        flagLCD = 0;
+        break;
+        
       }
-      else{
-        Serial.println("Client connect failed");
+      else {
+        if(flagLCD>=1){
+        flagLCD = flagLCD+1;
+        //informa status pelo lcd
+        lcd.clear();
+        lcd.home();
+        lcd.print("Esperando pelo");
+        lcd.setCursor(0,1);
+        lcd.print("servidor.");
+        //delay(1000);
+        }
+        }
       }
     }
     else{
-      contDigitos = 0;
-      cpf = ""; 
-      flagLCD=0;
-
-      Serial.println("Client connect failed");
+      conectaServidor();
     }
   }
-    //Verifica se o conseguiu comunicar com o servidor
-    /*verifica a resposta da comunicação tcp, 2 = aluno existe,
+  //Verifica se o conseguiu comunicar com o servidor
+  /*verifica a resposta da comunicação tcp, 2 = aluno existe,
     tem créditos e foram descontados créditos da sua carteira*/
 }
 //função que pega a resposta do servidor e decide se libera ou nn
-void liberaCatraca(uint8_t &response){
+void liberaCatraca(uint8_t &response) {
 
   /* ####Respostas possives do RESPONSE####
             #Respostas vem em ASCII#
- *  2 - 50 tudo certo, aluno existe e está autorizado;
- *  4 - 53 Aluno existe mas não está autorizado
- *  5 - 54 Aluno não existe
- */
+     2 - 50 tudo certo, aluno existe e está autorizado;
+     4 - 53 Aluno existe mas não está autorizado
+     5 - 54 Aluno não existe
+  */
 
-  Serial.println(response);
-  //Como a resposta vem em ASCII, converte o codigo decimal que indica tudo ok para ASCII 
-  if(response =='2'){
+  //Como a resposta vem em ASCII, converte o codigo decimal que indica tudo ok para ASCII
+  if (response == '2') {
     //envia mensagem que foi autorizado
     lcd.clear();
     lcd.home();
     lcd.print("Autorizado");
     //envia sinal sonoro
-    tone(pinBuzzer,929,200);
-    
-    //libera a catraca
-    digitalWrite(rele,HIGH);
+    tone(pinBuzzer, 1023, 200);
 
-      //envia mensagem de que liberou a catraca
-    lcd.setCursor(0,1);
+    //libera a catraca
+    digitalWrite(rele, HIGH);
+
+    //envia mensagem de que liberou a catraca
+    lcd.setCursor(0, 1);
     lcd.print("Catraca liberada");
 
     //chama e verifica a função que verifica os casos da catraca
-    if(travaCatraca()){
-
+    if (travaCatraca()) {
       //trava a catraca
-      digitalWrite(rele,LOW);
+      digitalWrite(rele, LOW);
+      Serial.println("Enviando pra onde foi o giro.");
+      //Serial.println(giro);
+      //comunica pra onde foi o giro da catraca
+       if(giro[0] !=0){
+        if(client.write(giro>=0 ? "1;1" :"1;2",3)){
+          Serial.println("Enviado");
+          int flagLoop = 1;
+          while(flagLoop == 1){
+             if(client.available() > 0){
+              uint8_t msg = client.read();
+              if(msg == '2'){
+                Serial.println("Tudo Certo");
+                flagLoop = 0;
+              }
+             }
+          }
+        }
+       }
       //zera todas as variaveis
       //envia mensagem de que travou a catraca
-      lcd.setCursor(0,1);
+      lcd.setCursor(0, 1);
       lcd.print("Catraca travada");
+      giro[0] =0;
       contDigitos = 0;
       cpf = "";
-      flagLCD=0;
+      flagLCD = 0;
 
     }
   }
-  else if(response == '4'){
+  else if (response == '1') {
 
     //avisa que aluno não está autorizado
     lcd.clear();
     lcd.home();
     lcd.print("Nao autorizado");
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     lcd.print("Informe a CGAE");
     delay(4000);
     //reinicia todas as flags e variaveis
     contDigitos = 0;
     cpf = "";
-    flagLCD=0;
+    flagLCD = 0;
 
   }
-  else if(response == '5'){
+  else if (response == '0') {
 
     //avisa que aluno não existe
 
@@ -460,19 +566,19 @@ void liberaCatraca(uint8_t &response){
     //reinicia todas as flags e variaveis
     contDigitos = 0;
     cpf = "";
-    flagLCD=0;
+    flagLCD = 0;
   }
-  else{
+  else {
     //avisa que algo deu errado e informa o codigo do erro
     lcd.clear();
     lcd.home();
     lcd.print("Erro, codigo:");
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     lcd.print(response);
 
     //reinicia todas as flags e variaveis
     contDigitos = 0;
     cpf = "";
-    flagLCD=0;
+    flagLCD = 0;
   }
 }

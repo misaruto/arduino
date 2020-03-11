@@ -1,0 +1,29 @@
+{
+  "name": "authentication",
+  "version": "1.0.0",
+  "description": "A authentication API for the project",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js --debug=true"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/misaruto/arduino.git"
+  },
+  "keywords": [
+    "node",
+    "authentication",
+    "server",
+    "TCP",
+    "mysql"
+  ],
+  "author": "Davidson Lucas de Souza",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/misaruto/arduino/issues"
+  },
+  "homepage": "https://github.com/misaruto/arduino#readme",
+  "dependencies": {
+    "mysql": "^2.18.1"
+  }
+}
