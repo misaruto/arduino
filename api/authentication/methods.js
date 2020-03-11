@@ -1,9 +1,3 @@
-/**
- * @todo testar
- * @todo tentar um cross site scripting
- * @todo terminar a querry com o db
- */
-
 /*-----------------------------------------------------------------------------------*/
 // Lista com todos as mensagens de erro (para os logs)
 const errors = [
@@ -12,7 +6,8 @@ const errors = [
     "Missing callback",
     "Invalid CPF", 
     "Wrong querry",
-    "Autentication failed"
+    "Autentication failed",
+    "Error on connect to mysql"
 ];
 /*-----------------------------------------------------------------------------------*/
 // Requisitando os módulos
@@ -30,41 +25,45 @@ var con = mysql.createConnection({
 });
 /*-----------------------------------------------------------------------------------*/
 // Constantes globais
-const ticketGates = ['123'];             // Lista com as catracas permitidas
+const ticketGates = [];        // Lista com as catracas permitidas
 const connections = [];             // Array com todas as conexões
 /*-----------------------------------------------------------------------------------*/
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
 function handleForIncommingRequests(socket)
 {
     // Verificação para caso de erro interno (Bizarro por sinal!)
-    if(!socket) create_log("", {code:2, fatal:true});
+   if(!socket) create_log("", {code:2, fatal:true});
     // Oque será feito quando a conexão for aberta
     socket.on("connect", () =>
     {
         this.autenticated = false;                  // Atributo que dirá se a catraca está autorisada
         this.index        = 0;                      // Atributo que guardará o id da catraca em connections
     });
-
+    socket.on("close",() =>
+    {
+        create_log("Cleint disconnected ");
+    })
     // O que será feito quando uma mensagem chegar do cliente
     socket.on("data", async function (data)
     {
         // Verifica se ela está logada
-        if (this.autenticated)                                  // Se sim, faça o seguinte:
+        if (this.autenticated)                                              // Se sim, faça o seguinte:
         {
-            create_log(`${data.toString()}`);                   // Cria um log com a ação
-            let res = 0;                                        // Variável temporária que guardará a resposta para o cliente
-            var request = data.toString();                      // Recupera a requisição
-            res = await process_request(request, this.index);   // Faz todo o processamento e guarda isso em uma variável
-            this.write(`${ res >= 0 ? res : 4 }`);              // Envia a resposta para o cliente, o protocolo é descrito à seguirs
+            create_log(`${data.toString()}`);                               // Cria um log com a ação
+            let res = 0;                                                    // Variável temporária que guardará a resposta para o cliente
+            var request = data.toString();                                  // Recupera a requisição
+            res = await process_request(request, this.index);               // Faz todo o processamento e guarda isso em uma variável
+            this.write(`${ res >= 0 ? res : 4 }`);                          // Envia a resposta para o cliente, o protocolo é descrito à seguirs
         }
-        else                                                    // Caso contrário, faça isso: 
+        else                                                                 // Caso contrário, faça isso: 
         {
-            create_log("New ticketGate:" + data.toString());    // Cria um log com a ação
-            res = await authenticateTicketGate(data.toString());// Tenta autenticar a catraca
-            await socket.write(`${res >= 0? 2:-1}`);            // Devolve o resultado para o cliente
-            this.index = res >= 0 ? res : null;                 // Se a catraca foi autorizada, salve o índice dela...
-            this.autenticated = res >= 0 ? true : false;        // ... e diga que ela está autorizada
-            if (res < 0) socket.end();                          // Se não foi autorizada, encerra a conexão
+            create_log("New ticketGate:" + data.toString());                 // Cria um log com a ação
+            res = await authenticateTicketGate(data.toString());             // Tenta autenticar a catraca
+            await socket.write(`${res >= 0? 2:-1}`);                         // Devolve o resultado para o cliente
+            this.index = res >= 0 ? res : null;                              // Se a catraca foi autorizada, salve o índice dela...
+            this.autenticated = res >= 0 ? true : false;                     // ... e diga que ela está autorizada
+            if (res < 0){ socket.end();  create_log("Autentication Faled!") }// Se não foi autorizada, encerra a conexão
+            else { create_log("Authenticated Successful")}
         }
     });                                                 
     socket.on("error", create_log)                              // Caso dê erro com a conexão, jogue isto no log
@@ -116,15 +115,15 @@ async function process_request(request, index)
 // Processa a entrada de um aluno(a direção)
 function processEntry(act, auth)
 {
-    if (!act){ create_log(act, {fatal:true, err:1}); return -1; }
-    return 2;
+    if (!act || !auth){ create_log(act, {fatal:true, err:1}); return -1; }
 
     const query = configs.database.updt.replace("$", auth)
                                        .replace("$", act);
     return callDB(query)
             .then((data) =>
             {
-                return 2;
+                if (data){ return 2; }
+                else { return -1; }
             })
 }
 // Tenta autenticar o aluno
@@ -150,11 +149,17 @@ async function tryngAuthentication(request, index)
     if (ans < 0){ create_log(request, { code:3, fatal:false} ); return -1; }
     const query = configs.database.auth.replace("$", request);
     return callDB(query)                                // Chama o banco de dados
-                .then((data) => 
+                .then((result) => 
                     {
-                        return data;                    // Retorna a resposta do banco de dados
+                        if (result.length == 0) { return 0; }
+                        if (result.length > 0){
+                            if (result[0].bolsaAtiva == 1) return 2;
+                            if (result[0].bolsaAtiva == 0) return 1;
+                        }
+                        return -1;
                     });
 }
+
 // Verifica se é um cpf válido
 function isAnCPF(cpf){
     // Elimina CPFs invalidos conhecidos	
@@ -214,7 +219,7 @@ function create_log(data, err)
     }
     else
     {
-        const msg = `Incoming message receiving: ${data}\n`;
+        const msg = `Note: ${data}\n`;
         console.error(msg);
         fs.appendFile(configs.logfile, msg, (err) => {
             if (err) throw err;
@@ -224,7 +229,7 @@ function create_log(data, err)
 
 // Chama o banco de dados para fazer a validação
 function callDB(query){  
-
+    if( con.state == "disconnected" ){ create_log("", { code:6, fatal:true }); }
     return new Promise((accept, reject) =>
     {
         con.connect(function (err)
@@ -232,12 +237,7 @@ function callDB(query){
             con.query(query, function (err, result, fields)
             {
                 if (err) { create_log("Mysql: " + err); return -1 };
-                if (result.length == 0) { accept(0); }
-                if (result.length > 0){
-                    if (result[0].bolsaAtiva == 1) accept(2);
-                    if (result[0].bolsaAtiva == 0) accept(1);
-                }
-                accept(-1);
+                accept(resul, fields);
             })
         });
     });
@@ -252,13 +252,18 @@ function init(tcpServer){
 // Busca no banco de dados, a lista de todas as catracas com permissão
 function getAlowedTicketGate()
 {
-    /** @todo: Implementar essa função e fazer a authenticateTicketGate chamar ela */
+    callDB("SELECT * FROM catracas WHERE ativa=1")
+        .then((data) =>
+        {
+            if (data > 0) ticketGates = data;
+        });
 }
 
 // Interface externa que invocará estes métodos
 module.exports = 
 {
-    init
+    init,
+    create_log,
 }
 
 /**
@@ -277,6 +282,7 @@ module.exports =
  *      3 - Invalid CPF given
  *      4 - Wrong query
  *      5 - Auth error (on connection)
+ *      6 - Fail to connect to mysql (on start)(fatal)
 */
 /**
  * Opcodes de requisição:

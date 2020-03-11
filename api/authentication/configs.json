@@ -1,6 +1,6 @@
 {
     "port":8080,
-    "host":"192.168.0.103",
+    "host":"localhost",
     "exclusive":true, 
     "database":{
         "host": "localhost",
