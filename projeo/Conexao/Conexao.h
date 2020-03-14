@@ -26,9 +26,10 @@ private:
     uint8_t identficador;
 
 public:
+    //construtor
     Conexao(uint8_t &mac[], uint8_t &ip[], uint16_t &port);
     bool inicarModulo();
-    bool conectar(uint8_t & identificador);
+    bool conectar();
     bool autenticar(uint8_t & identificador);
     bool autenticar();
     void printConexStatus();
