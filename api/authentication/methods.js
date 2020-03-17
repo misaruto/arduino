@@ -25,8 +25,8 @@ var con = mysql.createConnection({
 });
 /*-----------------------------------------------------------------------------------*/
 // Constantes globais
-const ticketGates = [];        // Lista com as catracas permitidas
-const connections = [];             // Array com todas as conexões
+let ticketGates = [];        // Lista com as catracas permitidas
+let connections = [];        // Array com todas as conexões
 /*-----------------------------------------------------------------------------------*/
 // Callback chamada quando o socket receber uma mensagem, ela tomará as ações nescessárias
 function handleForIncommingRequests(socket)
@@ -41,7 +41,7 @@ function handleForIncommingRequests(socket)
     });
     socket.on("close",() =>
     {
-        create_log("Cleint disconnected ");
+        create_log("Client disconnected ");
     })
     // O que será feito quando uma mensagem chegar do cliente
     socket.on("data", async function (data)
@@ -100,7 +100,7 @@ async function process_request(request, index)
         }
        
         else if (opcode == 1 && connections[index].autenticated) { 
-            res = await processEntry(request.split(";")[1], connections[index].autenticated);
+            res = await processEntry(request.split(";")[1], connections[index].autenticated, connections[index].auth_token);
             if (res == 2){ connections[index].autenticated = false; return 2; }
             else return res;
         }
@@ -112,12 +112,21 @@ async function process_request(request, index)
     }
 
 }
+
+/**
+ * Stores on the database the moviment of one strudent through the ticketgate.
+ * @param {int} act Direction of the moviment 
+ * @param {string} auth The code of the student
+ * @param {string} ticketate The id of the ticket gate
+ */
+
 // Processa a entrada de um aluno(a direção)
-function processEntry(act, auth)
+function processEntry(act, auth, ticketgate)
 {
     if (!act || !auth){ create_log(act, {fatal:true, err:1}); return -1; }
 
     const query = configs.database.updt.replace("$", auth)
+                                       .replace("$", ticketgate)
                                        .replace("$", act);
     return callDB(query)
             .then((data) =>
@@ -229,7 +238,6 @@ function create_log(data, err)
 
 // Chama o banco de dados para fazer a validação
 function callDB(query){  
-    if( con.state == "disconnected" ){ create_log("", { code:6, fatal:true }); }
     return new Promise((accept, reject) =>
     {
         con.connect(function (err)
@@ -237,13 +245,13 @@ function callDB(query){
             con.query(query, function (err, result, fields)
             {
                 if (err) { create_log("Mysql: " + err); return -1 };
-                accept(resul, fields);
+                accept(result, fields);
             })
         });
     });
 }
-function init(tcpServer){
-    getAlowedTicketGate();                         // Busca a lista de catracas permitidas
+async function init(tcpServer){
+    await getAlowedTicketGate();                   // Busca a lista de catracas permitidas
     tcpServer.create(handleForIncommingRequests);  // Cria um servidor
     tcpServer.onerror = create_log;                // Passa create_log como callback para erros no server
     tcpServer.listen();                            // Ouve por requisições
@@ -252,10 +260,12 @@ function init(tcpServer){
 // Busca no banco de dados, a lista de todas as catracas com permissão
 function getAlowedTicketGate()
 {
-    callDB("SELECT * FROM catracas WHERE ativa=1")
+    callDB(configs.database.ticketGate)
         .then((data) =>
         {
-            if (data > 0) ticketGates = data;
+            if (data.length > 0)  
+                for(let i = 0; i<data.length; i++)
+                    ticketGates.push (`${ data[i].validador }`) ;
         });
 }
 

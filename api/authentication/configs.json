@@ -3,12 +3,13 @@
     "host":"localhost",
     "exclusive":true, 
     "database":{
-        "host": "localhost",
-        "user": "root",
-        "password": "",
+        "host": "192.168.1.132",
+        "user": "misaruto",
+        "password": "123456",
         "database": "arduino",
         "auth":"SELECT bolsaAtiva FROM `VisaoGeralBolsistas` WHERE cpf=$",
-        "updt":""
+        "updt":"INSERT INTO `Logs`(`codAluno`, `horario`, `codCatraca`, `giro`) VALUES ((SELECT codAluno FROM Aluno WHERE cpf = '$'), NOW(), (SELECT codCatraca FROM Catracas WHERE validador = '$'), '$')",
+        "ticketGate":"SELECT * FROM `Catracas`"
     },
-    "logfile":"crash"
+    "logfile":"log.txt"
 }
