@@ -16,7 +16,7 @@ CREATE TABLE Catracas (
 CREATE TABLE Aluno (
     codAluno INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(100) NOT NULL,
-    cpf VARCHA20) NOT NULL,
+    cpf VARCHAR(20) NOT NULL,
     email VARCHAR(100) NOT NULL
 );
 
@@ -36,7 +36,7 @@ CREATE TABLE Bolsa (
     idBolsa INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
     ativo TINYINT(1) COMMENT "0. FALSE / 1. TRUE",
     credito INT NOT NULL DEFAULT 0,
-    codAluno INT NOTR( NULL,
+    codAluno INT NOT NULL,
     FOREIGN KEY (codAluno) REFERENCES Aluno(codAluno)
 );
 
@@ -68,6 +68,16 @@ FROM        Aluno
 INNER JOIN  Bolsa  ON   Aluno.codAluno = Bolsa.codAluno
 GROUP BY    Aluno.codAluno;
 
+CREATE VIEW VerificaAluno AS 
+  SELECT tokenRFID as token,
+    CASE 
+      WHEN Bolsa.ativo = 1 THEN "2"
+      WHEN Bolsa.ativo = 0 THEN "1" 
+      ELSE "0" END 
+      AS statusCode 
+      FROM Aluno,Bolsa,RFID
+    WHERE RFID.codAluno = Aluno.codAluno 
+    AND Bolsa.codAluno = Aluno.codAluno;
 
 DELIMITER //
 CREATE TRIGGER logPassaPelaCatraca AFTER UPDATE ON Bolsa
@@ -84,35 +94,3 @@ CREATE TRIGGER gerarBolsa AFTER INSERT ON Aluno
     INSERT INTO Bolsa(ativo, codAluno) VALUES(1, NEW.codAluno);
   END;
 //
-
-DELIMETER //
-CREATE TRIGGER incrementaQuarto AFTER INSERT ON Aluno
-  FOR EACH ROW 
-    BEGIN 
-      UPDATE Quartos INNER JOIN Aluno ON NEW.codQuarto = Quartos.codQuarto 
-      SET Quartos.vagasOcupadas = (Quartos.vagasOcupadas +1);   
-END;
-//
-DELIMETER ;
-
-
-DELIMETER //
-CREATE TRIGGER decrementaQuarto AFTER DELETE ON Aluno 
-  FOR EACH ROW 
-  BEGIN 
-    UPDATE Quartos INNER JOIN Aluno ON OLD.codQuarto = Quartos.codQuarto 
-    SET Quartos.vagasOcupadas = (Quartos.vagasOcupadas -1); 
-END;
-//
-DELIMETER ;
-
-CREATE VIEW VerificaAluno AS 
-  SELECT tokenRFID as token,
-    CASE 
-      WHEN Bolsa.ativo = 1 THEN "2"
-      WHEN Bolsa.ativo = 0 THEN "1" 
-      ELSE "0" END 
-      AS statuscode 
-      FROM Aluno,Bolsa,RFID
-    WHERE RFID.codAluno = Aluno.codAluno 
-    AND Bolsa.codAluno = Aluno.codAluno;
